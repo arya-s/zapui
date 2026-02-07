@@ -1,0 +1,12 @@
+.{
+    .name = .zapui,
+    .version = "0.0.1",
+    .fingerprint = 0xc40da30af49b9c46,
+    .minimum_zig_version = "0.15.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "playground",
+    },
+}
