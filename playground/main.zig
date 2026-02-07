@@ -72,73 +72,173 @@ pub fn main() !void {
         // Clear scene
         scene.clear();
 
-        // Build scene with some test quads
-        const time: f32 = @floatCast(c.glfwGetTime());
+        // Build a flexbox layout
+        var layout_engine = zapui.LayoutEngine.init(allocator);
+        defer layout_engine.deinit();
 
-        // Background quad
+        // Create child nodes
+        const child1 = try layout_engine.createNode(.{
+            .size = .{ .width = .{ .px = 100 }, .height = .{ .px = 80 } },
+            .flex_grow = 1,
+        }, &.{});
+
+        const child2 = try layout_engine.createNode(.{
+            .size = .{ .width = .{ .px = 100 }, .height = .{ .px = 80 } },
+            .flex_grow = 2,
+        }, &.{});
+
+        const child3 = try layout_engine.createNode(.{
+            .size = .{ .width = .{ .px = 100 }, .height = .{ .px = 80 } },
+            .flex_grow = 1,
+        }, &.{});
+
+        // Create container
+        const container = try layout_engine.createNode(.{
+            .flex_direction = .row,
+            .justify_content = .space_between,
+            .align_items = .center,
+            .gap = .{ .width = .{ .px = 20 }, .height = .{ .px = 0 } },
+            .padding = .{ .top = .{ .px = 20 }, .right = .{ .px = 20 }, .bottom = .{ .px = 20 }, .left = .{ .px = 20 } },
+            .size = .{ .width = .{ .px = 600 }, .height = .{ .px = 200 } },
+        }, &.{ child1, child2, child3 });
+
+        // Compute layout
+        layout_engine.computeLayout(container, .{
+            .width = .{ .definite = @floatFromInt(width) },
+            .height = .{ .definite = @floatFromInt(height) },
+        });
+
+        // Get layout results and render quads
+        const container_layout = layout_engine.getLayout(container);
+        const c1_layout = layout_engine.getLayout(child1);
+        const c2_layout = layout_engine.getLayout(child2);
+        const c3_layout = layout_engine.getLayout(child3);
+
+        // Offset for centering the demo
+        const offset_x: f32 = 50;
+        const offset_y: f32 = 50;
+
+        // Container background
         try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(50, 50, 300, 200),
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                container_layout.origin.x + offset_x,
+                container_layout.origin.y + offset_y,
+                container_layout.size.width,
+                container_layout.size.height,
+            ),
             .background = .{ .solid = zapui.rgb(0x2d3748) },
             .corner_radii = zapui.Corners(f32).all(12),
         });
 
-        // Animated quad
-        const x_offset = @sin(time * 2) * 50;
+        // Child 1 (blue)
         try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(100 + x_offset, 100, 150, 100),
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                c1_layout.origin.x + offset_x,
+                c1_layout.origin.y + offset_y,
+                c1_layout.size.width,
+                c1_layout.size.height,
+            ),
             .background = .{ .solid = zapui.rgb(0x4299e1) },
             .corner_radii = zapui.Corners(f32).all(8),
-            .border_widths = zapui.Edges(f32).all(2),
-            .border_color = zapui.rgb(0x2b6cb0),
         });
 
-        // Red quad with shadow
-        try scene.insertShadow(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(400, 100, 200, 150),
-            .corner_radii = zapui.Corners(f32).all(16),
-            .blur_radius = 20,
-            .color = zapui.black().withAlpha(0.4),
-        });
-
+        // Child 2 (green) - should be bigger due to flex_grow = 2
         try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(400, 100, 200, 150),
-            .background = .{ .solid = zapui.rgb(0xf56565) },
-            .corner_radii = zapui.Corners(f32).all(16),
-        });
-
-        // Green quad
-        try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(450, 300, 180, 120),
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                c2_layout.origin.x + offset_x,
+                c2_layout.origin.y + offset_y,
+                c2_layout.size.width,
+                c2_layout.size.height,
+            ),
             .background = .{ .solid = zapui.rgb(0x48bb78) },
-            .corner_radii = .{
-                .top_left = 0,
-                .top_right = 30,
-                .bottom_right = 0,
-                .bottom_left = 30,
-            },
-            .border_widths = zapui.Edges(f32).all(3),
-            .border_color = zapui.rgb(0x276749),
+            .corner_radii = zapui.Corners(f32).all(8),
         });
 
-        // Purple quad with different corner radii
+        // Child 3 (purple)
         try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(100, 350, 250, 180),
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                c3_layout.origin.x + offset_x,
+                c3_layout.origin.y + offset_y,
+                c3_layout.size.width,
+                c3_layout.size.height,
+            ),
             .background = .{ .solid = zapui.rgb(0x9f7aea) },
-            .corner_radii = .{
-                .top_left = 40,
-                .top_right = 10,
-                .bottom_right = 40,
-                .bottom_left = 10,
-            },
+            .corner_radii = zapui.Corners(f32).all(8),
         });
 
-        // Orange outlined quad (no fill)
-        try scene.insertQuad(.{
-            .bounds = zapui.Bounds(f32).fromXYWH(650, 400, 120, 120),
-            .border_widths = zapui.Edges(f32).all(4),
-            .border_color = zapui.rgb(0xed8936),
-            .corner_radii = zapui.Corners(f32).all(60), // Circle-ish
+        // Second demo: Column layout with shadow
+        const col_child1 = try layout_engine.createNode(.{
+            .size = .{ .width = .auto, .height = .{ .px = 50 } },
+        }, &.{});
+
+        const col_child2 = try layout_engine.createNode(.{
+            .size = .{ .width = .auto, .height = .{ .px = 50 } },
+        }, &.{});
+
+        const col_child3 = try layout_engine.createNode(.{
+            .size = .{ .width = .auto, .height = .{ .px = 50 } },
+        }, &.{});
+
+        const col_container = try layout_engine.createNode(.{
+            .flex_direction = .column,
+            .align_items = .stretch,
+            .gap = .{ .width = .{ .px = 0 }, .height = .{ .px = 10 } },
+            .padding = .{ .top = .{ .px = 15 }, .right = .{ .px = 15 }, .bottom = .{ .px = 15 }, .left = .{ .px = 15 } },
+            .size = .{ .width = .{ .px = 200 }, .height = .auto },
+        }, &.{ col_child1, col_child2, col_child3 });
+
+        layout_engine.computeLayout(col_container, .{
+            .width = .{ .definite = @floatFromInt(width) },
+            .height = .{ .definite = @floatFromInt(height) },
         });
+
+        const col_offset_x: f32 = 50;
+        const col_offset_y: f32 = 300;
+
+        const col_cont_layout = layout_engine.getLayout(col_container);
+
+        // Shadow for column container
+        try scene.insertShadow(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                col_cont_layout.origin.x + col_offset_x,
+                col_cont_layout.origin.y + col_offset_y,
+                col_cont_layout.size.width,
+                col_cont_layout.size.height,
+            ),
+            .corner_radii = zapui.Corners(f32).all(16),
+            .blur_radius = 15,
+            .color = zapui.black().withAlpha(0.3),
+        });
+
+        // Column container
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(
+                col_cont_layout.origin.x + col_offset_x,
+                col_cont_layout.origin.y + col_offset_y,
+                col_cont_layout.size.width,
+                col_cont_layout.size.height,
+            ),
+            .background = .{ .solid = zapui.rgb(0xf7fafc) },
+            .corner_radii = zapui.Corners(f32).all(16),
+        });
+
+        // Column children
+        const colors = [_]u24{ 0xfc8181, 0xf6ad55, 0x68d391 };
+        const col_children = [_]zapui.LayoutId{ col_child1, col_child2, col_child3 };
+
+        for (col_children, 0..) |child, i| {
+            const child_layout = layout_engine.getLayout(child);
+            try scene.insertQuad(.{
+                .bounds = zapui.Bounds(f32).fromXYWH(
+                    child_layout.origin.x + col_offset_x,
+                    child_layout.origin.y + col_offset_y,
+                    child_layout.size.width,
+                    child_layout.size.height,
+                ),
+                .background = .{ .solid = zapui.rgb(colors[i]) },
+                .corner_radii = zapui.Corners(f32).all(8),
+            });
+        }
 
         scene.finish();
 

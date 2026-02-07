@@ -14,6 +14,9 @@ pub const geometry = @import("geometry.zig");
 pub const color = @import("color.zig");
 pub const style = @import("style.zig");
 pub const scene = @import("scene.zig");
+pub const layout = @import("layout.zig");
+pub const entity = @import("entity.zig");
+pub const app = @import("app.zig");
 
 // Renderer modules
 pub const renderer = struct {
@@ -94,6 +97,23 @@ pub const Quad = scene.Quad;
 pub const Shadow = scene.Shadow;
 pub const DrawOrder = scene.DrawOrder;
 
+// Layout types
+pub const LayoutEngine = layout.LayoutEngine;
+pub const LayoutId = layout.LayoutId;
+pub const LayoutStyle = layout.LayoutStyle;
+pub const AvailableSpace = layout.AvailableSpace;
+
+// Entity types
+pub const EntityId = entity.EntityId;
+pub const Entity = entity.Entity;
+pub const AnyEntity = entity.AnyEntity;
+pub const EntityStore = entity.EntityStore;
+
+// App types
+pub const App = app.App;
+pub const Context = app.Context;
+pub const Subscription = app.Subscription;
+
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
@@ -113,5 +133,8 @@ test {
     std.testing.refAllDeclsRecursive(color);
     std.testing.refAllDeclsRecursive(style);
     std.testing.refAllDeclsRecursive(scene);
+    std.testing.refAllDeclsRecursive(layout);
+    std.testing.refAllDeclsRecursive(entity);
+    std.testing.refAllDeclsRecursive(app);
     // Note: renderer tests require OpenGL context, skip in unit tests
 }
