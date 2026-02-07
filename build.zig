@@ -13,6 +13,15 @@ pub fn build(b: *std.Build) void {
 
     // Add system library paths for OpenGL headers
     zapui_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+    // Add vendor directory for stb headers
+    zapui_mod.addIncludePath(b.path("src"));
+
+    // Compile stb_truetype
+    zapui_mod.addCSourceFile(.{
+        .file = b.path("src/vendor/stb_truetype.c"),
+        .flags = &.{"-std=c99"},
+    });
+    zapui_mod.link_libc = true;
 
     // Library artifact (for linking)
     const lib = b.addLibrary(.{
@@ -28,11 +37,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+    test_mod.addIncludePath(b.path("src"));
+    test_mod.addCSourceFile(.{
+        .file = b.path("src/vendor/stb_truetype.c"),
+        .flags = &.{"-std=c99"},
+    });
+    test_mod.link_libc = true;
 
     // Unit tests
     const lib_unit_tests = b.addTest(.{
         .root_module = test_mod,
     });
+    lib_unit_tests.linkLibC();
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);

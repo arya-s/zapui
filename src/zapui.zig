@@ -20,6 +20,7 @@ pub const app = @import("app.zig");
 pub const element = @import("element.zig");
 pub const input = @import("input.zig");
 pub const ui = @import("ui.zig");
+pub const text_system = @import("text_system.zig");
 pub const elements = struct {
     pub const div = @import("elements/div.zig");
 };
@@ -148,6 +149,13 @@ pub const HitboxId = input.HitboxId;
 pub const Ui = ui.Ui;
 pub const InitOptions = ui.InitOptions;
 
+// Text system
+pub const TextSystem = text_system.TextSystem;
+pub const FontId = text_system.FontId;
+pub const ShapedRun = text_system.ShapedRun;
+pub const ShapedGlyph = text_system.ShapedGlyph;
+pub const FontMetrics = text_system.FontMetrics;
+
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
@@ -173,6 +181,7 @@ test {
     std.testing.refAllDeclsRecursive(element);
     std.testing.refAllDeclsRecursive(input);
     std.testing.refAllDeclsRecursive(ui);
+    std.testing.refAllDeclsRecursive(text_system);
     std.testing.refAllDeclsRecursive(elements.div);
     // Note: renderer tests require OpenGL context, skip in unit tests
 }

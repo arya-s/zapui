@@ -53,6 +53,30 @@ const QuadInstance = extern struct {
     mask_h: f32,
 };
 
+/// Instance data for sprite rendering
+const SpriteInstance = extern struct {
+    // a_bounds: vec4
+    bounds_x: f32,
+    bounds_y: f32,
+    bounds_w: f32,
+    bounds_h: f32,
+    // a_uv_bounds: vec4
+    uv_x: f32,
+    uv_y: f32,
+    uv_w: f32,
+    uv_h: f32,
+    // a_color: vec4
+    color_r: f32,
+    color_g: f32,
+    color_b: f32,
+    color_a: f32,
+    // a_content_mask: vec4
+    mask_x: f32,
+    mask_y: f32,
+    mask_w: f32,
+    mask_h: f32,
+};
+
 /// Instance data for shadow rendering
 const ShadowInstance = extern struct {
     // a_bounds: vec4
@@ -113,6 +137,7 @@ pub const GlRenderer = struct {
     max_instances: usize,
     quad_instances: std.ArrayListUnmanaged(QuadInstance),
     shadow_instances: std.ArrayListUnmanaged(ShadowInstance),
+    sprite_instances: std.ArrayListUnmanaged(SpriteInstance),
 
     pub fn init(allocator: Allocator) !GlRenderer {
         // Create shader programs
@@ -246,11 +271,50 @@ pub const GlRenderer = struct {
 
         gl.glBindVertexArray(0);
 
-        // Create sprite VAO (placeholder for now)
+        // Create sprite VAO
         var sprite_vao: gl.GLuint = 0;
         var sprite_instance_vbo: gl.GLuint = 0;
         gl.glGenVertexArrays(1, @ptrCast(&sprite_vao));
         gl.glGenBuffers(1, @ptrCast(&sprite_instance_vbo));
+
+        gl.glBindVertexArray(sprite_vao);
+
+        // Reuse unit quad vertices
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, quad_vertex_vbo);
+        gl.glEnableVertexAttribArray(0);
+        gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, gl.GL_FALSE, 2 * @sizeOf(f32), null);
+
+        // Sprite instance buffer
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, sprite_instance_vbo);
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, 2048 * @sizeOf(SpriteInstance), null, gl.GL_DYNAMIC_DRAW);
+
+        const sprite_stride: gl.GLsizei = @sizeOf(SpriteInstance);
+        offset = 0;
+
+        // a_bounds (location 1)
+        gl.glEnableVertexAttribArray(1);
+        gl.glVertexAttribPointer(1, 4, gl.GL_FLOAT, gl.GL_FALSE, sprite_stride, @ptrFromInt(offset));
+        gl.glVertexAttribDivisor(1, 1);
+        offset += 4 * @sizeOf(f32);
+
+        // a_uv_bounds (location 2)
+        gl.glEnableVertexAttribArray(2);
+        gl.glVertexAttribPointer(2, 4, gl.GL_FLOAT, gl.GL_FALSE, sprite_stride, @ptrFromInt(offset));
+        gl.glVertexAttribDivisor(2, 1);
+        offset += 4 * @sizeOf(f32);
+
+        // a_color (location 3)
+        gl.glEnableVertexAttribArray(3);
+        gl.glVertexAttribPointer(3, 4, gl.GL_FLOAT, gl.GL_FALSE, sprite_stride, @ptrFromInt(offset));
+        gl.glVertexAttribDivisor(3, 1);
+        offset += 4 * @sizeOf(f32);
+
+        // a_content_mask (location 4)
+        gl.glEnableVertexAttribArray(4);
+        gl.glVertexAttribPointer(4, 4, gl.GL_FLOAT, gl.GL_FALSE, sprite_stride, @ptrFromInt(offset));
+        gl.glVertexAttribDivisor(4, 1);
+
+        gl.glBindVertexArray(0);
 
         // Create atlases
         var glyph_atlas = try Atlas.init(allocator, 1024, 1024, true);
@@ -278,6 +342,7 @@ pub const GlRenderer = struct {
             .max_instances = 1024,
             .quad_instances = .{ .items = &.{}, .capacity = 0 },
             .shadow_instances = .{ .items = &.{}, .capacity = 0 },
+            .sprite_instances = .{ .items = &.{}, .capacity = 0 },
         };
     }
 
@@ -291,6 +356,9 @@ pub const GlRenderer = struct {
         }
         if (self.shadow_instances.capacity > 0) {
             self.shadow_instances.deinit(self.allocator);
+        }
+        if (self.sprite_instances.capacity > 0) {
+            self.sprite_instances.deinit(self.allocator);
         }
 
         var vaos = [_]gl.GLuint{ self.quad_vao, self.shadow_vao, self.sprite_vao };
@@ -336,7 +404,8 @@ pub const GlRenderer = struct {
         // Draw quads
         try self.drawQuads(scene.getQuads());
 
-        // TODO: Draw sprites
+        // Draw sprites (text glyphs)
+        try self.drawMonoSprites(scene.getMonoSprites());
     }
 
     fn drawQuads(self: *GlRenderer, quads: []const Quad) !void {
@@ -439,5 +508,60 @@ pub const GlRenderer = struct {
         gl.glBindVertexArray(self.shadow_vao);
         gl.glDrawArraysInstanced(gl.GL_TRIANGLES, 0, 6, @intCast(self.shadow_instances.items.len));
         gl.glBindVertexArray(0);
+    }
+
+    fn drawMonoSprites(self: *GlRenderer, sprites: []const scene_mod.MonochromeSprite) !void {
+        if (sprites.len == 0) return;
+
+        // Build instance data
+        self.sprite_instances.clearRetainingCapacity();
+        for (sprites) |sprite| {
+            const rgba = sprite.color.toRgba();
+            const mask = sprite.content_mask orelse geometry.Bounds(f32).zero;
+
+            try self.sprite_instances.append(self.allocator, .{
+                .bounds_x = sprite.bounds.origin.x,
+                .bounds_y = sprite.bounds.origin.y,
+                .bounds_w = sprite.bounds.size.width,
+                .bounds_h = sprite.bounds.size.height,
+                .uv_x = sprite.tile_bounds.origin.x,
+                .uv_y = sprite.tile_bounds.origin.y,
+                .uv_w = sprite.tile_bounds.size.width,
+                .uv_h = sprite.tile_bounds.size.height,
+                .color_r = rgba.r,
+                .color_g = rgba.g,
+                .color_b = rgba.b,
+                .color_a = rgba.a,
+                .mask_x = mask.origin.x,
+                .mask_y = mask.origin.y,
+                .mask_w = mask.size.width,
+                .mask_h = mask.size.height,
+            });
+        }
+
+        // Upload instance data
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.sprite_instance_vbo);
+        const data_size: gl.GLsizeiptr = @intCast(self.sprite_instances.items.len * @sizeOf(SpriteInstance));
+        if (self.sprite_instances.items.len > 0) {
+            gl.glBufferSubData(gl.GL_ARRAY_BUFFER, 0, data_size, self.sprite_instances.items.ptr);
+        }
+
+        // Bind glyph atlas texture
+        gl.glActiveTexture(gl.GL_TEXTURE0);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.glyph_atlas.texture);
+
+        // Draw
+        self.sprite_program.use();
+        self.sprite_program.setViewport(self.viewport_size.width, self.viewport_size.height);
+        self.sprite_program.setUniformInt("u_texture", 0);
+        self.sprite_program.setUniformInt("u_mono", 1); // Monochrome mode
+        gl.glBindVertexArray(self.sprite_vao);
+        gl.glDrawArraysInstanced(gl.GL_TRIANGLES, 0, 6, @intCast(self.sprite_instances.items.len));
+        gl.glBindVertexArray(0);
+    }
+
+    /// Get the glyph atlas for text rendering
+    pub fn getGlyphAtlas(self: *GlRenderer) *Atlas {
+        return &self.glyph_atlas;
     }
 };

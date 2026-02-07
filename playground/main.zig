@@ -1,9 +1,9 @@
-//! zapui playground - Interactive Demo
+//! zapui playground - Interactive Demo with Text Rendering
 //!
 //! This demonstrates:
-//! - Building UIs with the Div fluent API
+//! - Building UIs with styled primitives
 //! - Hit testing for mouse interaction
-//! - State changes triggering re-renders
+//! - Text rendering with stb_truetype
 
 const std = @import("std");
 const zapui = @import("zapui");
@@ -16,19 +16,20 @@ const c = @cImport({
 var click_count: i32 = 0;
 var selected_color: usize = 3; // Start with orange
 const colors = [_]u24{ 0x4299e1, 0x48bb78, 0x9f7aea, 0xed8936, 0xf56565 };
+const color_names = [_][]const u8{ "Blue", "Green", "Purple", "Orange", "Red" };
 
 // Button bounds (computed during layout)
 var inc_button_bounds: zapui.Bounds(f32) = zapui.Bounds(f32).zero;
 var dec_button_bounds: zapui.Bounds(f32) = zapui.Bounds(f32).zero;
 var color_button_bounds: [5]zapui.Bounds(f32) = .{zapui.Bounds(f32).zero} ** 5;
 
-// Pointer to UI for callbacks
+// Pointer to UI and text system for callbacks
 var global_ui: ?*zapui.Ui = null;
+var global_text: ?*zapui.TextSystem = null;
+var global_font: ?zapui.FontId = null;
 
 pub fn main() !void {
-    std.debug.print("=== zapui Playground (Interactive Demo) ===\n\n", .{});
-    std.debug.print("Click the + and - buttons to change the count\n", .{});
-    std.debug.print("Click the colored squares to change the header color\n\n", .{});
+    std.debug.print("=== zapui Playground (Text Rendering Demo) ===\n\n", .{});
 
     // Initialize GLFW
     if (c.glfwInit() == 0) {
@@ -44,7 +45,7 @@ pub fn main() !void {
     c.glfwWindowHint(c.GLFW_OPENGL_FORWARD_COMPAT, c.GLFW_TRUE);
 
     // Create window
-    const window = c.glfwCreateWindow(800, 600, "zapui playground - Interactive Demo", null, null) orelse {
+    const window = c.glfwCreateWindow(800, 600, "zapui playground - Text Demo", null, null) orelse {
         std.debug.print("Failed to create GLFW window\n", .{});
         return error.WindowCreationFailed;
     };
@@ -79,7 +80,26 @@ pub fn main() !void {
 
     // Initialize renderer
     try ui.initRenderer();
-    std.debug.print("UI initialized\n\n", .{});
+    std.debug.print("Renderer initialized\n", .{});
+
+    // Create text system
+    var text_system = zapui.TextSystem.init(allocator);
+    defer text_system.deinit();
+    global_text = &text_system;
+
+    // Use the renderer's glyph atlas for text
+    if (ui.renderer) |*r| {
+        text_system.setAtlas(r.getGlyphAtlas());
+    }
+
+    // Load font
+    const font = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch |err| {
+        std.debug.print("Failed to load font: {}\n", .{err});
+        std.debug.print("Please ensure assets/fonts/LiberationSans-Regular.ttf exists\n", .{});
+        return err;
+    };
+    global_font = font;
+    std.debug.print("Font loaded successfully\n\n", .{});
 
     // Set up GLFW callbacks for mouse input
     _ = c.glfwSetMouseButtonCallback(window, mouseButtonCallback);
@@ -101,8 +121,7 @@ pub fn main() !void {
         if (needs_render or ui.needsRedraw()) {
             ui.beginFrame();
 
-            // Instead of using the complex layout, render directly with known positions
-            renderUI(&ui, @floatFromInt(width), @floatFromInt(height));
+            renderUI(&ui, &text_system, font, @floatFromInt(width), @floatFromInt(height));
 
             try ui.endFrame(zapui.rgb(0x1a202c));
             c.glfwSwapBuffers(window);
@@ -143,7 +162,7 @@ fn mouseButtonCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mod
             for (color_button_bounds, 0..) |bounds, i| {
                 if (bounds.contains(pos)) {
                     selected_color = i;
-                    std.debug.print("Color: {} \n", .{i});
+                    std.debug.print("Color: {s}\n", .{color_names[i]});
                     ui.requestRedraw();
                     return;
                 }
@@ -159,7 +178,7 @@ fn cursorPosCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(.c) 
     }
 }
 
-fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
+fn renderUI(ui: *zapui.Ui, text_system: *zapui.TextSystem, font: zapui.FontId, width: f32, height: f32) void {
     const scene = &ui.scene;
     const current_color = colors[selected_color];
     const center_x = width / 2;
@@ -172,9 +191,9 @@ fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
 
     // Header bar
     const header_w: f32 = 500;
-    const header_h: f32 = 80;
+    const header_h: f32 = 100;
     const header_x = center_x - header_w / 2;
-    const header_y: f32 = 60;
+    const header_y: f32 = 50;
 
     scene.insertShadow(.{
         .bounds = zapui.Bounds(f32).fromXYWH(header_x, header_y, header_w, header_h),
@@ -189,23 +208,31 @@ fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
         .corner_radii = zapui.Corners(f32).all(16),
     }) catch {};
 
-    // Count indicator bar (width changes with count)
-    const bar_base: f32 = 100;
-    const bar_w: f32 = bar_base + @as(f32, @floatFromInt(@mod(click_count + 50, 30))) * 6;
-    const bar_h: f32 = 30;
-    const bar_x = center_x - bar_w / 2;
-    const bar_y = header_y + (header_h - bar_h) / 2;
 
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(bar_x, bar_y, bar_w, bar_h),
-        .background = .{ .solid = zapui.rgb(0xffffff).withAlpha(0.4) },
-        .corner_radii = zapui.Corners(f32).all(8),
-    }) catch {};
+    
+    // Title text  
+    const title = "zapui Text Demo";
+    const title_size: f32 = 28;
+    const title_width = text_system.measureText(title, font, title_size);
+    const title_metrics = text_system.getFontMetrics(font, title_size);
+    const title_x = center_x - title_width / 2;
+    const title_y = header_y + header_h / 2 - title_metrics.ascent / 2;
+
+    renderText(scene, text_system, font, title, title_x, title_y + title_metrics.ascent, title_size, zapui.rgb(0xffffff));
+
+    // Subtitle with count
+    var count_buf: [32]u8 = undefined;
+    const count_text = std.fmt.bufPrint(&count_buf, "Count: {}", .{click_count}) catch "Count: ?";
+    const count_size: f32 = 18;
+    const count_width = text_system.measureText(count_text, font, count_size);
+    const count_x = center_x - count_width / 2;
+
+    renderText(scene, text_system, font, count_text, count_x, header_y + header_h - 15, count_size, zapui.rgb(0xffffff).withAlpha(0.8));
 
     // Buttons
     const button_w: f32 = 100;
     const button_h: f32 = 50;
-    const button_y: f32 = 180;
+    const button_y: f32 = 200;
     const button_gap: f32 = 40;
 
     // Decrement button (red, left)
@@ -225,12 +252,8 @@ fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
         .corner_radii = zapui.Corners(f32).all(12),
     }) catch {};
 
-    // Minus sign
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(dec_x + button_w / 2 - 12, button_y + button_h / 2 - 2, 24, 4),
-        .background = .{ .solid = zapui.rgb(0xffffff) },
-        .corner_radii = zapui.Corners(f32).all(2),
-    }) catch {};
+    // Minus sign text
+    renderText(scene, text_system, font, "-", dec_x + button_w / 2 - 6, button_y + button_h / 2 + 10, 32, zapui.rgb(0xffffff));
 
     // Increment button (green, right)
     const inc_x = center_x + button_gap / 2;
@@ -249,24 +272,13 @@ fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
         .corner_radii = zapui.Corners(f32).all(12),
     }) catch {};
 
-    // Plus sign (horizontal)
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(inc_x + button_w / 2 - 12, button_y + button_h / 2 - 2, 24, 4),
-        .background = .{ .solid = zapui.rgb(0xffffff) },
-        .corner_radii = zapui.Corners(f32).all(2),
-    }) catch {};
-
-    // Plus sign (vertical)
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(inc_x + button_w / 2 - 2, button_y + button_h / 2 - 12, 4, 24),
-        .background = .{ .solid = zapui.rgb(0xffffff) },
-        .corner_radii = zapui.Corners(f32).all(2),
-    }) catch {};
+    // Plus sign text
+    renderText(scene, text_system, font, "+", inc_x + button_w / 2 - 8, button_y + button_h / 2 + 10, 32, zapui.rgb(0xffffff));
 
     // Color picker
     const color_size: f32 = 50;
     const color_gap: f32 = 15;
-    const color_y: f32 = 280;
+    const color_y: f32 = 300;
     const total_color_w = color_size * 5 + color_gap * 4;
     const color_start_x = center_x - total_color_w / 2;
 
@@ -297,28 +309,46 @@ fn renderUI(ui: *zapui.Ui, width: f32, height: f32) void {
         }) catch {};
     }
 
-    // Instructions (text placeholders)
-    const text_y: f32 = 380;
+    // Color name label
+    const name_text = color_names[selected_color];
+    const name_size: f32 = 16;
+    const name_width = text_system.measureText(name_text, font, name_size);
+    renderText(scene, text_system, font, name_text, center_x - name_width / 2, color_y + 80, name_size, zapui.rgb(0xa0aec0));
 
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(center_x - 140, text_y, 280, 18),
-        .background = .{ .solid = zapui.rgb(0x4a5568) },
-        .corner_radii = zapui.Corners(f32).all(4),
-    }) catch {};
+    // Instructions
+    const instr1 = "Click + or - to change the count";
+    const instr2 = "Click colors to change the header";
+    const instr_size: f32 = 14;
+    const instr1_w = text_system.measureText(instr1, font, instr_size);
+    const instr2_w = text_system.measureText(instr2, font, instr_size);
 
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(center_x - 110, text_y + 30, 220, 14),
-        .background = .{ .solid = zapui.rgb(0x4a5568) },
-        .corner_radii = zapui.Corners(f32).all(4),
-    }) catch {};
-
-    // Count display text placeholder
-    const count_text_w: f32 = 60;
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(center_x - count_text_w / 2, text_y + 60, count_text_w, 24),
-        .background = .{ .solid = zapui.rgb(0x718096) },
-        .corner_radii = zapui.Corners(f32).all(6),
-    }) catch {};
+    renderText(scene, text_system, font, instr1, center_x - instr1_w / 2, height - 70, instr_size, zapui.rgb(0x718096));
+    renderText(scene, text_system, font, instr2, center_x - instr2_w / 2, height - 45, instr_size, zapui.rgb(0x718096));
 
     scene.finish();
+}
+
+fn renderText(scene: *zapui.Scene, text_system: *zapui.TextSystem, font: zapui.FontId, text: []const u8, x: f32, y: f32, size: f32, clr: zapui.Hsla) void {
+    var run = text_system.shapeText(text, font, size) catch return;
+    defer text_system.freeShapedRun(&run);
+
+    var cursor_x = x;
+    for (run.glyphs) |glyph| {
+        if (text_system.rasterizeGlyph(font, glyph.glyph_id, size)) |cached| {
+            if (cached.pixel_bounds.width() > 0 and cached.pixel_bounds.height() > 0) {
+                const gx = cursor_x + cached.pixel_bounds.x();
+                const gy = y + cached.pixel_bounds.y();
+                const gw = cached.pixel_bounds.width();
+                const gh = cached.pixel_bounds.height();
+
+                // Add monochrome sprite to scene
+                scene.insertMonoSprite(.{
+                    .bounds = zapui.Bounds(f32).fromXYWH(gx, gy, gw, gh),
+                    .tile_bounds = cached.atlas_bounds,
+                    .color = clr,
+                }) catch {};
+            }
+        }
+        cursor_x += glyph.x_advance;
+    }
 }

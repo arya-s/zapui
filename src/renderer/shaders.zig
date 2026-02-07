@@ -48,6 +48,13 @@ pub const ShaderProgram = struct {
             gl.glUniform1i(self.mono_loc, if (mono) 1 else 0);
         }
     }
+
+    pub fn setUniformInt(self: *const ShaderProgram, name: [*:0]const u8, value: gl.GLint) void {
+        const loc = gl.glGetUniformLocation(self.program, name);
+        if (loc >= 0) {
+            gl.glUniform1i(loc, value);
+        }
+    }
 };
 
 /// Compile a shader from source
