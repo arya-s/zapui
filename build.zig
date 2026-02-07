@@ -11,6 +11,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add system library paths for OpenGL headers
+    zapui_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+
     // Library artifact (for linking)
     const lib = b.addLibrary(.{
         .name = "zapui",
@@ -18,12 +21,13 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
-    // Create a module for tests
+    // Create a module for tests (without GL - just core types)
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/zapui.zig"),
         .target = target,
         .optimize = optimize,
     });
+    test_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
 
     // Unit tests
     const lib_unit_tests = b.addTest(.{
@@ -46,6 +50,12 @@ pub fn build(b: *std.Build) void {
         .name = "playground",
         .root_module = playground_mod,
     });
+
+    // Link system libraries for playground
+    playground.linkSystemLibrary("GL");
+    playground.linkSystemLibrary("glfw");
+    playground.linkLibC();
+
     b.installArtifact(playground);
 
     const run_playground = b.addRunArtifact(playground);

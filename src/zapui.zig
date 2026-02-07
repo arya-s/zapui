@@ -13,6 +13,15 @@ const std = @import("std");
 pub const geometry = @import("geometry.zig");
 pub const color = @import("color.zig");
 pub const style = @import("style.zig");
+pub const scene = @import("scene.zig");
+
+// Renderer modules
+pub const renderer = struct {
+    pub const gl = @import("renderer/gl.zig");
+    pub const shaders = @import("renderer/shaders.zig");
+    pub const atlas = @import("renderer/atlas.zig");
+    pub const gl_renderer = @import("renderer/gl_renderer.zig");
+};
 
 // ============================================================================
 // Re-exports for convenience
@@ -79,11 +88,30 @@ pub const Spacing = style.Spacing;
 pub const Radius = style.Radius;
 pub const FontSize = style.FontSize;
 
+// Scene types
+pub const Scene = scene.Scene;
+pub const Quad = scene.Quad;
+pub const Shadow = scene.Shadow;
+pub const DrawOrder = scene.DrawOrder;
+
+// Renderer types
+pub const GlRenderer = renderer.gl_renderer.GlRenderer;
+pub const Atlas = renderer.atlas.Atlas;
+
+/// Load OpenGL function pointers (call after creating GL context)
+pub fn loadGl(getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !void {
+    try renderer.gl.loadGlFunctions(getProcAddress);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
 
 test {
     // Run all module tests
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDeclsRecursive(geometry);
+    std.testing.refAllDeclsRecursive(color);
+    std.testing.refAllDeclsRecursive(style);
+    std.testing.refAllDeclsRecursive(scene);
+    // Note: renderer tests require OpenGL context, skip in unit tests
 }

@@ -3,109 +3,156 @@
 const std = @import("std");
 const zapui = @import("zapui");
 
+const c = @cImport({
+    @cInclude("GLFW/glfw3.h");
+});
+
 pub fn main() !void {
-    std.debug.print("=== zapui Playground ===\n\n", .{});
+    std.debug.print("=== zapui Playground (Phase 2: OpenGL Renderer) ===\n\n", .{});
 
-    // Test geometry
-    std.debug.print("-- Geometry --\n", .{});
-    const point = zapui.Point(f32).init(100, 200);
-    std.debug.print("Point: ({d}, {d})\n", .{ point.x, point.y });
+    // Initialize GLFW
+    if (c.glfwInit() == 0) {
+        std.debug.print("Failed to initialize GLFW\n", .{});
+        return error.GlfwInitFailed;
+    }
+    defer c.glfwTerminate();
 
-    const size = zapui.Size(f32).init(800, 600);
-    std.debug.print("Size: {d}x{d}, area: {d}\n", .{ size.width, size.height, size.area() });
+    // Request OpenGL 3.3 Core
+    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, 3);
+    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 3);
+    c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
+    c.glfwWindowHint(c.GLFW_OPENGL_FORWARD_COMPAT, c.GLFW_TRUE);
 
-    const bounds = zapui.Bounds(f32).fromXYWH(10, 20, 100, 50);
-    std.debug.print("Bounds: origin=({d},{d}), size={d}x{d}\n", .{
-        bounds.origin.x,
-        bounds.origin.y,
-        bounds.size.width,
-        bounds.size.height,
-    });
-    std.debug.print("  center: ({d}, {d})\n", .{ bounds.center().x, bounds.center().y });
-    std.debug.print("  contains (50, 40): {}\n", .{bounds.contains(zapui.Point(f32).init(50, 40))});
-
-    const edges = zapui.Edges(f32).all(8);
-    std.debug.print("Edges (all 8): top={d}, right={d}, bottom={d}, left={d}\n", .{
-        edges.top,
-        edges.right,
-        edges.bottom,
-        edges.left,
-    });
-
-    const corners = zapui.Corners(f32).all(4);
-    std.debug.print("Corners (all 4): TL={d}, TR={d}, BR={d}, BL={d}\n", .{
-        corners.top_left,
-        corners.top_right,
-        corners.bottom_right,
-        corners.bottom_left,
-    });
-
-    // Test colors
-    std.debug.print("\n-- Colors --\n", .{});
-    const c1 = zapui.rgb(0xFF5500);
-    std.debug.print("rgb(0xFF5500) -> HSLA: h={d:.3}, s={d:.3}, l={d:.3}, a={d:.3}\n", .{ c1.h, c1.s, c1.l, c1.a });
-
-    const rgba_color = c1.toRgba();
-    std.debug.print("  -> RGBA: r={d:.3}, g={d:.3}, b={d:.3}, a={d:.3}\n", .{
-        rgba_color.r,
-        rgba_color.g,
-        rgba_color.b,
-        rgba_color.a,
-    });
-
-    const red_color = zapui.red();
-    std.debug.print("red() -> HSLA: h={d:.3}, s={d:.3}, l={d:.3}\n", .{ red_color.h, red_color.s, red_color.l });
-
-    const lighter = red_color.lighten(0.2);
-    std.debug.print("red().lighten(0.2) -> l={d:.3}\n", .{lighter.l});
-
-    // Test style
-    std.debug.print("\n-- Style --\n", .{});
-    var style = zapui.Style.init();
-    style.display = .flex;
-    style.flex_direction = .column;
-    style.justify_content = .center;
-    style.align_items = .center;
-    style.padding = .{
-        .top = zapui.px(16),
-        .right = zapui.px(16),
-        .bottom = zapui.px(16),
-        .left = zapui.px(16),
+    // Create window
+    const window = c.glfwCreateWindow(800, 600, "zapui playground", null, null) orelse {
+        std.debug.print("Failed to create GLFW window\n", .{});
+        return error.WindowCreationFailed;
     };
-    style.background = .{ .solid = zapui.rgb(0x1a1a2e) };
-    style.corner_radii = zapui.Corners(zapui.Pixels).all(zapui.Radius.lg);
-    style.border_widths = zapui.Edges(zapui.Pixels).all(1);
-    style.border_color = zapui.rgb(0x4a4a6a);
+    defer c.glfwDestroyWindow(window);
 
-    std.debug.print("Style created:\n", .{});
-    std.debug.print("  display: {}\n", .{style.display});
-    std.debug.print("  flex_direction: {}\n", .{style.flex_direction});
-    std.debug.print("  justify_content: {?}\n", .{style.justify_content});
-    std.debug.print("  align_items: {?}\n", .{style.align_items});
-    std.debug.print("  isVisible: {}\n", .{style.isVisible()});
-    std.debug.print("  hasVisualContent: {}\n", .{style.hasVisualContent()});
+    c.glfwMakeContextCurrent(window);
+    c.glfwSwapInterval(1); // VSync
 
-    // Test length resolution
-    std.debug.print("\n-- Length Resolution --\n", .{});
-    const rem_base: zapui.Pixels = 16;
-    const parent_size: zapui.Pixels = 200;
+    // Load OpenGL functions
+    const glGetProcAddress = struct {
+        fn getProcAddress(name: [*:0]const u8) ?*anyopaque {
+            const ptr = c.glfwGetProcAddress(name);
+            return @ptrCast(@constCast(ptr));
+        }
+    }.getProcAddress;
+    try zapui.loadGl(glGetProcAddress);
+    std.debug.print("OpenGL loaded successfully\n", .{});
 
-    const len_px = zapui.px(100);
-    const len_rems = zapui.rems(2);
-    const len_pct = zapui.percent(50);
-    const len_auto = zapui.auto;
+    // Create allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    std.debug.print("px(100) resolves to: {?d}\n", .{len_px.resolve(parent_size, rem_base)});
-    std.debug.print("rems(2) resolves to: {?d} (rem_base=16)\n", .{len_rems.resolve(parent_size, rem_base)});
-    std.debug.print("percent(50) resolves to: {?d} (parent=200)\n", .{len_pct.resolve(parent_size, rem_base)});
-    std.debug.print("auto resolves to: {?}\n", .{zapui.Length.resolve(len_auto, parent_size, rem_base)});
+    // Create renderer
+    var renderer = try zapui.GlRenderer.init(allocator);
+    defer renderer.deinit();
+    std.debug.print("Renderer initialized\n", .{});
 
-    // Test spacing presets
-    std.debug.print("\n-- Spacing Presets --\n", .{});
-    std.debug.print("Spacing._4 = {d}px\n", .{zapui.Spacing._4.px});
-    std.debug.print("Spacing._8 = {d}px\n", .{zapui.Spacing._8.px});
-    std.debug.print("Radius.lg = {d}px\n", .{zapui.Radius.lg});
-    std.debug.print("FontSize.xl = {d}px\n", .{zapui.FontSize.xl});
+    // Create scene
+    var scene = zapui.Scene.init(allocator);
+    defer scene.deinit();
 
-    std.debug.print("\n=== Phase 1 Complete! ===\n", .{});
+    // Main loop
+    var frame_count: u64 = 0;
+    while (c.glfwWindowShouldClose(window) == 0) {
+        c.glfwPollEvents();
+
+        // Get window size
+        var width: c_int = 0;
+        var height: c_int = 0;
+        c.glfwGetFramebufferSize(window, &width, &height);
+
+        renderer.setViewport(@floatFromInt(width), @floatFromInt(height), 1.0);
+
+        // Clear scene
+        scene.clear();
+
+        // Build scene with some test quads
+        const time: f32 = @floatCast(c.glfwGetTime());
+
+        // Background quad
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(50, 50, 300, 200),
+            .background = .{ .solid = zapui.rgb(0x2d3748) },
+            .corner_radii = zapui.Corners(f32).all(12),
+        });
+
+        // Animated quad
+        const x_offset = @sin(time * 2) * 50;
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(100 + x_offset, 100, 150, 100),
+            .background = .{ .solid = zapui.rgb(0x4299e1) },
+            .corner_radii = zapui.Corners(f32).all(8),
+            .border_widths = zapui.Edges(f32).all(2),
+            .border_color = zapui.rgb(0x2b6cb0),
+        });
+
+        // Red quad with shadow
+        try scene.insertShadow(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(400, 100, 200, 150),
+            .corner_radii = zapui.Corners(f32).all(16),
+            .blur_radius = 20,
+            .color = zapui.black().withAlpha(0.4),
+        });
+
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(400, 100, 200, 150),
+            .background = .{ .solid = zapui.rgb(0xf56565) },
+            .corner_radii = zapui.Corners(f32).all(16),
+        });
+
+        // Green quad
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(450, 300, 180, 120),
+            .background = .{ .solid = zapui.rgb(0x48bb78) },
+            .corner_radii = .{
+                .top_left = 0,
+                .top_right = 30,
+                .bottom_right = 0,
+                .bottom_left = 30,
+            },
+            .border_widths = zapui.Edges(f32).all(3),
+            .border_color = zapui.rgb(0x276749),
+        });
+
+        // Purple quad with different corner radii
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(100, 350, 250, 180),
+            .background = .{ .solid = zapui.rgb(0x9f7aea) },
+            .corner_radii = .{
+                .top_left = 40,
+                .top_right = 10,
+                .bottom_right = 40,
+                .bottom_left = 10,
+            },
+        });
+
+        // Orange outlined quad (no fill)
+        try scene.insertQuad(.{
+            .bounds = zapui.Bounds(f32).fromXYWH(650, 400, 120, 120),
+            .border_widths = zapui.Edges(f32).all(4),
+            .border_color = zapui.rgb(0xed8936),
+            .corner_radii = zapui.Corners(f32).all(60), // Circle-ish
+        });
+
+        scene.finish();
+
+        // Render
+        renderer.clear(zapui.rgb(0x1a202c));
+        try renderer.drawScene(&scene);
+
+        c.glfwSwapBuffers(window);
+        frame_count += 1;
+
+        if (frame_count % 300 == 0) {
+            std.debug.print("Frame {}, {} primitives\n", .{ frame_count, scene.primitiveCount() });
+        }
+    }
+
+    std.debug.print("\n=== Playground finished ({} frames) ===\n", .{frame_count});
 }
