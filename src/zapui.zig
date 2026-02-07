@@ -19,6 +19,7 @@ pub const entity = @import("entity.zig");
 pub const app = @import("app.zig");
 pub const element = @import("element.zig");
 pub const input = @import("input.zig");
+pub const ui = @import("ui.zig");
 pub const elements = struct {
     pub const div = @import("elements/div.zig");
 };
@@ -143,6 +144,10 @@ pub const Modifiers = input.Modifiers;
 pub const HitTestEngine = input.HitTestEngine;
 pub const HitboxId = input.HitboxId;
 
+// UI orchestration
+pub const Ui = ui.Ui;
+pub const InitOptions = ui.InitOptions;
+
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
@@ -167,6 +172,7 @@ test {
     std.testing.refAllDeclsRecursive(app);
     std.testing.refAllDeclsRecursive(element);
     std.testing.refAllDeclsRecursive(input);
+    std.testing.refAllDeclsRecursive(ui);
     std.testing.refAllDeclsRecursive(elements.div);
     // Note: renderer tests require OpenGL context, skip in unit tests
 }
