@@ -8,6 +8,8 @@ const color_mod = @import("../color.zig");
 const layout_mod = @import("../layout.zig");
 const scene_mod = @import("../scene.zig");
 const element_mod = @import("../element.zig");
+const input_mod = @import("../input.zig");
+const app_mod = @import("../app.zig");
 
 const Allocator = std.mem.Allocator;
 const Pixels = geometry.Pixels;
@@ -26,6 +28,18 @@ const LayoutStyle = layout_mod.LayoutStyle;
 const RenderContext = element_mod.RenderContext;
 const AnyElement = element_mod.AnyElement;
 const intoAnyElement = element_mod.intoAnyElement;
+const Cursor = input_mod.Cursor;
+const HitboxId = input_mod.HitboxId;
+const MouseDownEvent = input_mod.MouseDownEvent;
+const MouseUpEvent = input_mod.MouseUpEvent;
+const MouseMoveEvent = input_mod.MouseMoveEvent;
+const App = app_mod.App;
+
+/// Event handler types
+pub const MouseDownHandler = *const fn (*App, MouseDownEvent) void;
+pub const MouseUpHandler = *const fn (*App, MouseUpEvent) void;
+pub const ClickHandler = *const fn (*App) void;
+pub const HoverHandler = *const fn (*App, bool) void;
 
 /// Div element - a styled container
 pub const Div = struct {
@@ -35,6 +49,17 @@ pub const Div = struct {
     style: Style = .{},
     children_list: std.ArrayListUnmanaged(AnyElement) = .{ .items = &.{}, .capacity = 0 },
     child_layout_ids: std.ArrayListUnmanaged(LayoutId) = .{ .items = &.{}, .capacity = 0 },
+
+    // Event handlers
+    on_mouse_down: ?MouseDownHandler = null,
+    on_mouse_up: ?MouseUpHandler = null,
+    on_click: ?ClickHandler = null,
+    on_hover: ?HoverHandler = null,
+    cursor_style: Cursor = .default,
+
+    // Runtime state
+    hitbox_id: ?HitboxId = null,
+    is_hovered: bool = false,
 
     /// Create a new Div
     pub fn init(allocator: Allocator) *Div {
@@ -429,6 +454,39 @@ pub const Div = struct {
     }
 
     // ========================================================================
+    // Events
+    // ========================================================================
+
+    pub fn onMouseDown(self: *Self, handler: MouseDownHandler) *Self {
+        self.on_mouse_down = handler;
+        return self;
+    }
+
+    pub fn onMouseUp(self: *Self, handler: MouseUpHandler) *Self {
+        self.on_mouse_up = handler;
+        return self;
+    }
+
+    pub fn onClick(self: *Self, handler: ClickHandler) *Self {
+        self.on_click = handler;
+        return self;
+    }
+
+    pub fn onHover(self: *Self, handler: HoverHandler) *Self {
+        self.on_hover = handler;
+        return self;
+    }
+
+    pub fn cursor(self: *Self, c: Cursor) *Self {
+        self.cursor_style = c;
+        return self;
+    }
+
+    pub fn cursorPointer(self: *Self) *Self {
+        return self.cursor(.pointer);
+    }
+
+    // ========================================================================
     // Build
     // ========================================================================
 
@@ -454,6 +512,15 @@ pub const Div = struct {
     }
 
     pub fn prepaint(self: *Self, bounds: Bounds(Pixels), ctx: *RenderContext) void {
+        // Register hitbox if we have event handlers
+        const has_handlers = self.on_mouse_down != null or self.on_mouse_up != null or
+            self.on_click != null or self.on_hover != null or
+            self.cursor_style != .default;
+
+        if (has_handlers) {
+            self.hitbox_id = ctx.registerHitbox(bounds, self.cursor_style);
+        }
+
         // Prepaint children with their computed bounds
         for (self.children_list.items, 0..) |*child_elem, i| {
             if (i < self.child_layout_ids.items.len) {

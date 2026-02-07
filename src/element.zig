@@ -6,6 +6,7 @@ const geometry = @import("geometry.zig");
 const layout_mod = @import("layout.zig");
 const scene_mod = @import("scene.zig");
 const app_mod = @import("app.zig");
+const input_mod = @import("input.zig");
 
 const Allocator = std.mem.Allocator;
 const Pixels = geometry.Pixels;
@@ -14,6 +15,9 @@ const LayoutId = layout_mod.LayoutId;
 const LayoutEngine = layout_mod.LayoutEngine;
 const Scene = scene_mod.Scene;
 const App = app_mod.App;
+const HitTestEngine = input_mod.HitTestEngine;
+const Cursor = input_mod.Cursor;
+const HitboxId = input_mod.HitboxId;
 
 /// Render context passed to elements during layout/paint
 pub const RenderContext = struct {
@@ -21,8 +25,17 @@ pub const RenderContext = struct {
     layout_engine: *LayoutEngine,
     scene: *Scene,
     app: *App,
+    hit_test: ?*HitTestEngine = null,
     scale_factor: f32 = 1.0,
     rem_size: Pixels = 16.0,
+
+    /// Register a hitbox during prepaint
+    pub fn registerHitbox(self: *RenderContext, bounds: Bounds(Pixels), cursor: Cursor) ?HitboxId {
+        if (self.hit_test) |ht| {
+            return ht.registerHitbox(bounds, cursor, true) catch null;
+        }
+        return null;
+    }
 };
 
 /// Element vtable for dynamic dispatch

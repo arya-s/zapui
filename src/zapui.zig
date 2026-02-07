@@ -18,6 +18,7 @@ pub const layout = @import("layout.zig");
 pub const entity = @import("entity.zig");
 pub const app = @import("app.zig");
 pub const element = @import("element.zig");
+pub const input = @import("input.zig");
 pub const elements = struct {
     pub const div = @import("elements/div.zig");
 };
@@ -127,6 +128,21 @@ pub const intoAnyElement = element.intoAnyElement;
 pub const Div = elements.div.Div;
 pub const div = elements.div.div;
 
+// Input types
+pub const InputEvent = input.InputEvent;
+pub const MouseButton = input.MouseButton;
+pub const MouseDownEvent = input.MouseDownEvent;
+pub const MouseUpEvent = input.MouseUpEvent;
+pub const MouseMoveEvent = input.MouseMoveEvent;
+pub const ScrollWheelEvent = input.ScrollWheelEvent;
+pub const KeyDownEvent = input.KeyDownEvent;
+pub const KeyUpEvent = input.KeyUpEvent;
+pub const Key = input.Key;
+pub const Modifiers = input.Modifiers;
+// Cursor is exported from style module
+pub const HitTestEngine = input.HitTestEngine;
+pub const HitboxId = input.HitboxId;
+
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
@@ -150,6 +166,7 @@ test {
     std.testing.refAllDeclsRecursive(entity);
     std.testing.refAllDeclsRecursive(app);
     std.testing.refAllDeclsRecursive(element);
+    std.testing.refAllDeclsRecursive(input);
     std.testing.refAllDeclsRecursive(elements.div);
     // Note: renderer tests require OpenGL context, skip in unit tests
 }
