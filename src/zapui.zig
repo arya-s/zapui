@@ -17,6 +17,10 @@ pub const scene = @import("scene.zig");
 pub const layout = @import("layout.zig");
 pub const entity = @import("entity.zig");
 pub const app = @import("app.zig");
+pub const element = @import("element.zig");
+pub const elements = struct {
+    pub const div = @import("elements/div.zig");
+};
 
 // Renderer modules
 pub const renderer = struct {
@@ -114,6 +118,15 @@ pub const App = app.App;
 pub const Context = app.Context;
 pub const Subscription = app.Subscription;
 
+// Element types
+pub const AnyElement = element.AnyElement;
+pub const RenderContext = element.RenderContext;
+pub const intoAnyElement = element.intoAnyElement;
+
+// Div element
+pub const Div = elements.div.Div;
+pub const div = elements.div.div;
+
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
@@ -136,5 +149,7 @@ test {
     std.testing.refAllDeclsRecursive(layout);
     std.testing.refAllDeclsRecursive(entity);
     std.testing.refAllDeclsRecursive(app);
+    std.testing.refAllDeclsRecursive(element);
+    std.testing.refAllDeclsRecursive(elements.div);
     // Note: renderer tests require OpenGL context, skip in unit tests
 }
