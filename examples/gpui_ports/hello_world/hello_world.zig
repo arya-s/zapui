@@ -40,40 +40,38 @@ const HelloWorld = struct {
 
     // Port of GPUI's Render trait:
     //
-    // fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-    //     div()
-    //         .flex()
-    //         .flex_col()
-    //         .gap_3()
-    //         .bg(rgb(0x505050))
-    //         .size(px(500.0))
-    //         .justify_center()
-    //         .items_center()
-    //         .text_xl()
-    //         .text_color(rgb(0xffffff))
-    //         .child(format!("Hello, {}!", &self.text))
-    //         .child(
-    //             div()
-    //                 .flex()
-    //                 .gap_2()
-    //                 .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
-    //         )
+    // impl Render for HelloWorld {
+    //     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    //         div()
+    //             .flex()
+    //             .flex_col()
+    //             .gap_3()
+    //             .bg(rgb(0x505050))
+    //             .size(px(500.0))
+    //             .justify_center()
+    //             .items_center()
+    //             .text_xl()
+    //             .text_color(rgb(0xffffff))
+    //             .child(format!("Hello, {}!", &self.text))
+    //             .child(
+    //                 div()
+    //                     .flex()
+    //                     .gap_2()
+    //                     .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                     .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                     .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                     .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                     .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                     .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
+    //             )
+    //     }
     // }
     //
-    fn render(self: *HelloWorld, allocator: std.mem.Allocator, label_buf: []u8) !*div_mod.Div {
-        _ = allocator;
-
-        // Format the text (into provided buffer for lifetime)
+    fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
+        // format!("Hello, {}!", &self.text) -> std.fmt.bufPrint
         const label = std.fmt.bufPrint(label_buf, "Hello, {s}!", .{self.text}) catch "Hello!";
 
-        // Build the UI tree (matches GPUI exactly)
-        // Note: In GPUI, .child("text") creates a text child element.
-        // In ZapUI, we use a div with child_text() for the same effect.
+        // Build the UI tree - matches GPUI almost exactly
         return div()
             .flex()
             .flex_col()
@@ -84,18 +82,18 @@ const HelloWorld = struct {
             .items_center()
             .text_xl()
             .text_color(rgb(0xffffff))
-            .child(div().child_text(label))  // text as a child div
+            .child(div().child_text(label)) // .child("text") -> .child(div().child_text("text"))
             .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
-                    .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
-                    .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
-                    .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
-                    .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
-                    .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black()))
-            );
+            div()
+                .flex()
+                .gap_2()
+                .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())),
+        );
     }
 };
 
@@ -120,16 +118,10 @@ fn drawTextForDiv(
     // Draw text content if present
     if (d.text_content_val) |text| {
         const text_w = text_renderer.measureText(text);
-        // Center horizontally, vertically (accounting for font baseline)
         const tx = x + (lay.size.width - text_w) / 2;
         const ty = y + lay.size.height / 2 + 6; // baseline offset
-        const text_color = d.text_color_val;
-        text_renderer.draw(renderer, text, tx, ty, .{
-            text_color.toRgba().r,
-            text_color.toRgba().g,
-            text_color.toRgba().b,
-            text_color.toRgba().a,
-        });
+        const tc = d.text_color_val.toRgba();
+        text_renderer.draw(renderer, text, tx, ty, .{ tc.r, tc.g, tc.b, tc.a });
     }
 
     // Recurse into children
@@ -164,22 +156,18 @@ pub fn main() !void {
     var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Text system (for measuring and rendering text)
+    // Text systems
     var text_system = try zapui.text_system.TextSystem.init(allocator);
     defer text_system.deinit();
-
-    // Load font into text system
     _ = try text_system.loadFontMem(font_data);
 
-    // Text renderer (D3D11 specific)
     var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, font_data, 20);
     defer text_renderer.deinit();
 
-    // Layout engine
+    // Layout & scene
     var layout = zaffy.Zaffy.init(allocator);
     defer layout.deinit();
 
-    // Scene (collects primitives for rendering)
     var scene = Scene.init(allocator);
     defer scene.deinit();
 
@@ -195,12 +183,10 @@ pub fn main() !void {
             }
         }
 
-        // Reset element storage for this frame
+        // Build UI
         div_mod.reset();
-
-        // Build UI tree (use static buffer for text lifetime)
         var label_buf: [64]u8 = undefined;
-        const root = try state.render(allocator, &label_buf);
+        const root = state.render(&label_buf);
 
         // Layout
         try root.buildWithTextSystem(&layout, 16, &text_system);
@@ -213,11 +199,9 @@ pub fn main() !void {
         scene.clear();
         root.paint(&scene, &text_system, 0, 0, &layout, null, null);
         scene.finish();
-
         renderer.drawScene(&scene);
 
-        // Draw text separately using D3D11TextRenderer
-        // (scene MonochromeSprites need atlas integration with D3D11)
+        // Draw text (separate from scene for now)
         drawTextForDiv(root, &layout, &text_renderer, &renderer, 0, 0);
 
         renderer.present(true);
