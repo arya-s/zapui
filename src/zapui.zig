@@ -21,9 +21,10 @@ pub const element = @import("element.zig");
 pub const input = @import("input.zig");
 pub const ui = @import("ui.zig");
 pub const text_system = @import("text_system.zig");
-pub const elements = struct {
-    pub const div = @import("elements/div.zig");
-};
+pub const elements = @import("elements.zig");
+pub const view = @import("view.zig");
+pub const taffy = @import("taffy.zig");
+pub const window = @import("window.zig");
 
 // Renderer modules
 pub const renderer = struct {
@@ -126,9 +127,20 @@ pub const AnyElement = element.AnyElement;
 pub const RenderContext = element.RenderContext;
 pub const intoAnyElement = element.intoAnyElement;
 
-// Div element
-pub const Div = elements.div.Div;
-pub const div = elements.div.div;
+// Elements
+pub const Div = elements.Div;
+pub const Text = elements.Text;
+pub const Button = elements.Button;
+pub const Checkbox = elements.Checkbox;
+pub const Slider = elements.Slider;
+pub const Badge = elements.Badge;
+pub const Card = elements.Card;
+pub const Divider = elements.Divider;
+pub const Tabs = elements.Tabs;
+pub const Input = elements.Input;
+pub const Toggle = elements.Toggle;
+pub const Progress = elements.Progress;
+pub const Avatar = elements.Avatar;
 
 // Input types
 pub const InputEvent = input.InputEvent;
@@ -148,6 +160,39 @@ pub const HitboxId = input.HitboxId;
 // UI orchestration
 pub const Ui = ui.Ui;
 pub const InitOptions = ui.InitOptions;
+
+// View system
+pub const ViewTree = view.ViewTree;
+pub const ViewNode = view.ViewNode;
+pub const ViewContext = view.ViewContext;
+pub const ClickEvent = view.ClickEvent;
+pub const HoverEvent = view.HoverEvent;
+pub const DragEvent = view.DragEvent;
+
+// View builders
+pub const col = view.col;
+pub const row = view.row;
+pub const container = view.container;
+pub const text = view.text;
+pub const withId = view.withId;
+pub const withChildren = view.withChildren;
+pub const withPadding = view.withPadding;
+pub const withGap = view.withGap;
+pub const withSize = view.withSize;
+pub const withWidth = view.withWidth;
+pub const withHeight = view.withHeight;
+pub const withFlex = view.withFlex;
+pub const withBackground = view.withBackground;
+pub const withBorder = view.withBorder;
+pub const withCornerRadius = view.withCornerRadius;
+pub const withShadow = view.withShadow;
+pub const withTextColor = view.withTextColor;
+pub const withFontSize = view.withFontSize;
+pub const withCursor = view.withCursor;
+pub const withOnClick = view.withOnClick;
+pub const withOnHover = view.withOnHover;
+pub const withOnDrag = view.withOnDrag;
+pub const withUserData = view.withUserData;
 
 // Text system
 pub const TextSystem = text_system.TextSystem;

@@ -4,6 +4,7 @@
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const color = @import("color.zig");
+const taffy = @import("taffy.zig");
 
 const Pixels = geometry.Pixels;
 const Point = geometry.Point;
@@ -264,7 +265,147 @@ pub const Style = struct {
     pub fn effectiveJustifyContent(self: Style) JustifyContent {
         return self.justify_content orelse .flex_start;
     }
+
+    /// Convert to Taffy style for layout computation
+    pub fn toTaffy(self: Style, rem_size: Pixels) taffy.Style {
+        return .{
+            .display = switch (self.display) {
+                .flex => .flex,
+                .block => .block,
+                .none => .none,
+            },
+            .position = switch (self.position) {
+                .relative => .relative,
+                .absolute => .absolute,
+            },
+            .flex_direction = switch (self.flex_direction) {
+                .row => .row,
+                .row_reverse => .row_reverse,
+                .column => .column,
+                .column_reverse => .column_reverse,
+            },
+            .flex_wrap = switch (self.flex_wrap) {
+                .no_wrap => .no_wrap,
+                .wrap => .wrap,
+                .wrap_reverse => .wrap_reverse,
+            },
+            .align_items = if (self.align_items) |ai| switch (ai) {
+                .flex_start => .flex_start,
+                .flex_end => .flex_end,
+                .center => .center,
+                .stretch => .stretch,
+                .baseline => .baseline,
+            } else null,
+            .align_self = if (self.align_self) |as| switch (as) {
+                .auto => null,
+                .flex_start => .flex_start,
+                .flex_end => .flex_end,
+                .center => .center,
+                .stretch => .stretch,
+                .baseline => .baseline,
+            } else null,
+            .align_content = if (self.align_content) |ac| switch (ac) {
+                .flex_start => .flex_start,
+                .flex_end => .flex_end,
+                .center => .center,
+                .stretch => .stretch,
+                .space_between => .space_between,
+                .space_around => .space_around,
+                .space_evenly => .space_evenly,
+            } else null,
+            .justify_content = if (self.justify_content) |jc| switch (jc) {
+                .flex_start => .flex_start,
+                .flex_end => .flex_end,
+                .center => .center,
+                .space_between => .space_between,
+                .space_around => .space_around,
+                .space_evenly => .space_evenly,
+            } else null,
+            .flex_grow = self.flex_grow,
+            .flex_shrink = self.flex_shrink,
+            .flex_basis = lengthToTaffy(self.flex_basis, rem_size),
+            .size = .{
+                .width = lengthToTaffy(self.size.width, rem_size),
+                .height = lengthToTaffy(self.size.height, rem_size),
+            },
+            .min_size = .{
+                .width = lengthToTaffy(self.min_size.width, rem_size),
+                .height = lengthToTaffy(self.min_size.height, rem_size),
+            },
+            .max_size = .{
+                .width = lengthToTaffy(self.max_size.width, rem_size),
+                .height = lengthToTaffy(self.max_size.height, rem_size),
+            },
+            .gap = .{
+                .width = lengthToTaffyLP(self.gap.width, rem_size),
+                .height = lengthToTaffyLP(self.gap.height, rem_size),
+            },
+            .padding = .{
+                .top = lengthToTaffyLP(self.padding.top, rem_size),
+                .right = lengthToTaffyLP(self.padding.right, rem_size),
+                .bottom = lengthToTaffyLP(self.padding.bottom, rem_size),
+                .left = lengthToTaffyLP(self.padding.left, rem_size),
+            },
+            .margin = .{
+                .top = lengthToTaffyLPA(self.margin.top, rem_size),
+                .right = lengthToTaffyLPA(self.margin.right, rem_size),
+                .bottom = lengthToTaffyLPA(self.margin.bottom, rem_size),
+                .left = lengthToTaffyLPA(self.margin.left, rem_size),
+            },
+            .border = .{
+                .top = .{ .length = self.border_widths.top },
+                .right = .{ .length = self.border_widths.right },
+                .bottom = .{ .length = self.border_widths.bottom },
+                .left = .{ .length = self.border_widths.left },
+            },
+            .inset = .{
+                .top = optionalLengthToTaffyLPA(self.inset.top, rem_size),
+                .right = optionalLengthToTaffyLPA(self.inset.right, rem_size),
+                .bottom = optionalLengthToTaffyLPA(self.inset.bottom, rem_size),
+                .left = optionalLengthToTaffyLPA(self.inset.left, rem_size),
+            },
+            .aspect_ratio = self.aspect_ratio,
+        };
+    }
 };
+
+/// Convert zapui Length to Taffy Dimension
+fn lengthToTaffy(len: Length, rem_size: Pixels) taffy.Dimension {
+    return switch (len) {
+        .px => |v| .{ .length = v },
+        .percent => |v| .{ .percent = v / 100.0 },
+        .rems => |v| .{ .length = v * rem_size },
+        .auto => .auto,
+    };
+}
+
+/// Convert zapui Length to Taffy LengthPercentage
+fn lengthToTaffyLP(len: Length, rem_size: Pixels) taffy.LengthPercentage {
+    return switch (len) {
+        .px => |v| .{ .length = v },
+        .percent => |v| .{ .percent = v / 100.0 },
+        .rems => |v| .{ .length = v * rem_size },
+        .auto => .{ .length = 0 },
+    };
+}
+
+/// Convert zapui Length to Taffy LengthPercentageAuto
+fn lengthToTaffyLPA(len: Length, rem_size: Pixels) taffy.LengthPercentageAuto {
+    return switch (len) {
+        .px => |v| .{ .length = v },
+        .percent => |v| .{ .percent = v / 100.0 },
+        .rems => |v| .{ .length = v * rem_size },
+        .auto => .auto,
+    };
+}
+
+/// Convert optional zapui Length to Taffy LengthPercentageAuto
+fn optionalLengthToTaffyLPA(len: ?Length, rem_size: Pixels) taffy.LengthPercentageAuto {
+    if (len) |l| {
+        return lengthToTaffyLPA(l, rem_size);
+    }
+    return .auto;
+}
 
 // ============================================================================
 // Additional style types

@@ -239,14 +239,6 @@ pub const Ui = struct {
         return &self.app;
     }
 
-    // ========================================================================
-    // Convenience element constructors (allocate from frame arena)
-    // ========================================================================
-
-    /// Create a new div element from the frame arena
-    pub fn div(self: *Ui) *Div {
-        return Div.init(self.frame_arena.allocator());
-    }
 };
 
 // ============================================================================

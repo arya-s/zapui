@@ -1,354 +1,348 @@
-//! zapui playground - Interactive Demo with Text Rendering
-//!
-//! This demonstrates:
-//! - Building UIs with styled primitives
-//! - Hit testing for mouse interaction
-//! - Text rendering with stb_truetype
+//! ZapUI Playground - GPUI-compatible Div API Demo
 
 const std = @import("std");
 const zapui = @import("zapui");
 
-const c = @cImport({
-    @cInclude("GLFW/glfw3.h");
-});
+const GlRenderer = zapui.GlRenderer;
+const TextSystem = zapui.TextSystem;
+const Scene = zapui.Scene;
+const taffy = zapui.taffy;
+const Bounds = zapui.Bounds;
+const Point = zapui.Point;
+const Pixels = zapui.Pixels;
+const Hsla = zapui.Hsla;
 
-// Application state
-var click_count: i32 = 0;
-var selected_color: usize = 3; // Start with orange
-const colors = [_]u24{ 0x4299e1, 0x48bb78, 0x9f7aea, 0xed8936, 0xf56565 };
-const color_names = [_][]const u8{ "Blue", "Green", "Purple", "Orange", "Red" };
+// GPUI-style API
+const Div = zapui.elements.div.Div;
+const div = zapui.elements.div.div;
+const v_flex = zapui.elements.div.v_flex;
+const h_flex = zapui.elements.div.h_flex;
+const reset = zapui.elements.div.reset;
+const px = zapui.elements.div.px;
 
-// Button bounds (computed during layout)
-var inc_button_bounds: zapui.Bounds(f32) = zapui.Bounds(f32).zero;
-var dec_button_bounds: zapui.Bounds(f32) = zapui.Bounds(f32).zero;
-var color_button_bounds: [5]zapui.Bounds(f32) = .{zapui.Bounds(f32).zero} ** 5;
+const glfw = @cImport({ @cInclude("GLFW/glfw3.h"); });
 
-// Pointer to UI and text system for callbacks
-var global_ui: ?*zapui.Ui = null;
-var global_text: ?*zapui.TextSystem = null;
-var global_font: ?zapui.FontId = null;
+// ============================================================================
+// Colors
+// ============================================================================
+
+const C = struct {
+    const bg_dark = zapui.rgb(0x0f1419);
+    const bg_card = zapui.rgb(0x1a1f26);
+    const bg_elevated = zapui.rgb(0x2d3748);
+    const bg_hover = zapui.rgb(0x3d4a5c);
+    const primary = zapui.rgb(0x4299e1);
+    const success = zapui.rgb(0x48bb78);
+    const danger = zapui.rgb(0xf56565);
+    const warning = zapui.rgb(0xed8936);
+    const purple = zapui.rgb(0x9f7aea);
+    const white = zapui.rgb(0xffffff);
+    const text_primary = zapui.rgb(0xe2e8f0);
+    const text_muted = zapui.rgb(0x718096);
+    const border = zapui.rgb(0x4a5568);
+};
+
+// ============================================================================
+// State
+// ============================================================================
+
+var g_mouse_pos: Point(Pixels) = .{ .x = 0, .y = 0 };
+var g_mouse_down: bool = false;
+var g_slider_value: f32 = 0.65;
+var g_checkbox_checked: bool = true;
+var g_toggle_on: bool = true;
+
+// Hit testing
+const Hitbox = struct { bounds: Bounds(Pixels), id: usize };
+var g_hitboxes: [64]Hitbox = undefined;
+var g_hitbox_count: usize = 0;
+
+const ID_SLIDER = 1;
+const ID_CHECKBOX = 2;
+const ID_TOGGLE = 3;
+const ID_BTN_PRIMARY = 10;
+const ID_BTN_SUCCESS = 11;
+const ID_BTN_DANGER = 12;
+
+fn resetHitboxes() void { g_hitbox_count = 0; }
+
+fn addHitbox(bounds: Bounds(Pixels), id: usize) void {
+    if (g_hitbox_count < g_hitboxes.len) {
+        g_hitboxes[g_hitbox_count] = .{ .bounds = bounds, .id = id };
+        g_hitbox_count += 1;
+    }
+}
+
+fn hitTest(pos: Point(Pixels)) ?usize {
+    var i: usize = g_hitbox_count;
+    while (i > 0) { i -= 1; if (g_hitboxes[i].bounds.contains(pos)) return g_hitboxes[i].id; }
+    return null;
+}
+
+fn isHovered(id: usize) bool {
+    return if (hitTest(g_mouse_pos)) |hid| hid == id else false;
+}
+
+// ============================================================================
+// Components (GPUI-style)
+// ============================================================================
+
+fn button(label: []const u8, color: Hsla, id: usize) *Div {
+    return div()
+        .w(px(100)).h(px(40))
+        .bg(color)
+        .hover_bg(color.lighten(0.1))
+        .rounded(px(8))
+        .id(id)
+        .justify_center().items_center()
+        .child_text(label)
+        .text_color(C.white);
+}
+
+fn checkbox(label: []const u8, checked: bool, id: usize) *Div {
+    const box_color = if (checked) C.primary else C.bg_elevated;
+    const bord_color = if (checked) C.primary else C.border;
+    
+    // Using .when() to conditionally add the checkmark
+    const addCheckmark = struct {
+        fn f(d: *Div) *Div {
+            return d.child(div().w(px(10)).h(px(10)).bg(C.white).rounded(px(2)));
+        }
+    }.f;
+    
+    const box = div()
+        .w(px(20)).h(px(20))
+        .bg(box_color)
+        .hover_bg(if (checked) C.primary else C.bg_hover)  // hover style!
+        .rounded(px(4))
+        .border_2().border_color(bord_color)
+        .justify_center().items_center()
+        .id(id)
+        .when(checked, addCheckmark);
+    
+    const lbl = div().h(px(20)).px(px(8)).child_text(label).text_sm().text_color(C.text_primary);
+    
+    return h_flex().gap(px(10)).items_center().child(box).child(lbl);
+}
+
+fn toggle(enabled: bool, id: usize) *Div {
+    const track_color = if (enabled) C.primary else C.bg_elevated;
+    const knob_x: Pixels = if (enabled) 26 else 4;
+    
+    const track = div()
+        .w(px(48)).h(px(26))
+        .bg(track_color)
+        .hover_bg(if (enabled) C.primary.lighten(0.1) else C.bg_hover)  // hover style!
+        .rounded_full()
+        .id(id);
+    const knob = div().w(px(18)).h(px(18)).bg(C.white).rounded_full().absolute().left(px(knob_x)).top(px(4));
+    
+    return track.child(knob);
+}
+
+fn slider(value: f32, id: usize) *Div {
+    const track_w: Pixels = 200;
+    const knob_size: Pixels = 20;
+    const container_h: Pixels = 24;
+    const track_h: Pixels = 8;
+    
+    const filled_w = track_w * value;
+    const knob_x = track_w * value - knob_size / 2;
+    const knob_y = (container_h - knob_size) / 2;
+    const track_y = (container_h - track_h) / 2;
+    
+    const track_bg = div().w(px(track_w)).h(px(track_h)).bg(C.bg_elevated).rounded(px(4))
+        .absolute().top(px(track_y));
+    const filled = div().w(px(filled_w)).h(px(track_h)).bg(C.primary).rounded(px(4))
+        .absolute().top(px(track_y));
+    const knob = div().w(px(knob_size)).h(px(knob_size)).bg(C.primary).rounded_full()
+        .border_3().border_color(C.white)
+        .absolute().left(px(@max(0, knob_x))).top(px(knob_y));
+    
+    return div().w(px(track_w)).h(px(container_h)).id(id)
+        .child(track_bg).child(filled).child(knob);
+}
+
+fn progressBar(value: f32, color: Hsla) *Div {
+    const bar_w: Pixels = 200;
+    const filled_w = bar_w * std.math.clamp(value, 0, 1);
+    
+    const track = div().w(px(bar_w)).h(px(10)).bg(C.bg_elevated).rounded(px(5));
+    const filled = div().w(px(filled_w)).h(px(10)).bg(color).rounded(px(5)).absolute();
+    
+    return track.child(filled);
+}
+
+fn sectionTitle(title: []const u8) *Div {
+    return div().h(px(36)).child_text(title).text_lg().text_color(C.text_primary);
+}
+
+// ============================================================================
+// Main UI
+// ============================================================================
+
+var g_slider_buf: [32]u8 = undefined;
+
+fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: Pixels, height: Pixels) !void {
+    reset();
+    resetHitboxes();
+    
+    const rem: Pixels = 16.0;
+    
+    // Header
+    const header = div()
+        .h(px(70))
+        .bg(C.bg_card)
+        .justify_center()
+        .px(px(24))
+        .child(div().child_text("ZapUI Div API Demo").text_2xl().text_color(C.primary));
+    
+    // Buttons section
+    const btn_section = v_flex().gap(px(12))
+        .child(sectionTitle("Buttons"))
+        .child(h_flex().gap(px(12))
+            .child(button("Primary", C.primary, ID_BTN_PRIMARY))
+            .child(button("Success", C.success, ID_BTN_SUCCESS))
+            .child(button("Danger", C.danger, ID_BTN_DANGER)));
+    
+    // Checkbox section
+    const cb_section = v_flex().gap(px(12))
+        .child(sectionTitle("Checkbox"))
+        .child(checkbox("Enable feature", g_checkbox_checked, ID_CHECKBOX));
+    
+    // Toggle section
+    const toggle_section = v_flex().gap(px(12))
+        .child(sectionTitle("Toggle"))
+        .child(h_flex().gap(px(12)).items_center()
+            .child(toggle(g_toggle_on, ID_TOGGLE))
+            .child(div().child_text(if (g_toggle_on) "On" else "Off").text_sm().text_color(C.text_primary)));
+    
+    // Slider section
+    const slider_text = std.fmt.bufPrint(&g_slider_buf, "{d:.0}%", .{g_slider_value * 100}) catch "0%";
+    const slider_section = v_flex().gap(px(12))
+        .child(sectionTitle("Slider"))
+        .child(h_flex().gap(px(16)).items_center()
+            .child(slider(g_slider_value, ID_SLIDER))
+            .child(div().child_text(slider_text).text_sm().text_color(C.text_muted)));
+    
+    // Progress section
+    const progress_section = v_flex().gap(px(12))
+        .child(sectionTitle("Progress"))
+        .child(v_flex().gap(px(8))
+            .child(progressBar(0.75, C.primary))
+            .child(progressBar(0.45, C.success))
+            .child(progressBar(0.25, C.warning)));
+    
+    // Content area
+    const content = v_flex().gap(px(24)).p(px(24)).flex_1()
+        .child(btn_section)
+        .child(cb_section)
+        .child(toggle_section)
+        .child(slider_section)
+        .child(progress_section);
+    
+    // Root
+    const root = v_flex().w(px(width)).h(px(height)).bg(C.bg_dark)
+        .child(header).child(content);
+    
+    try root.build(tree, rem);
+    tree.computeLayoutWithSize(root.node_id.?, width, height);
+    root.paint(scene, text_system, 0, 0, tree, addHitbox, isHovered);
+}
+
+// ============================================================================
+// Input
+// ============================================================================
+
+fn handleClick() void {
+    if (hitTest(g_mouse_pos)) |id| {
+        switch (id) {
+            ID_CHECKBOX => g_checkbox_checked = !g_checkbox_checked,
+            ID_TOGGLE => g_toggle_on = !g_toggle_on,
+            else => {},
+        }
+    }
+}
+
+fn handleSliderDrag() void {
+    if (g_mouse_down) {
+        for (g_hitboxes[0..g_hitbox_count]) |hb| {
+            if (hb.id == ID_SLIDER and hb.bounds.contains(g_mouse_pos)) {
+                g_slider_value = std.math.clamp((g_mouse_pos.x - hb.bounds.origin.x) / hb.bounds.size.width, 0, 1);
+                break;
+            }
+        }
+    }
+}
+
+fn mouseButtonCallback(_: ?*glfw.GLFWwindow, btn: c_int, action: c_int, _: c_int) callconv(.c) void {
+    if (btn == glfw.GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == glfw.GLFW_PRESS) { g_mouse_down = true; handleSliderDrag(); }
+        else if (action == glfw.GLFW_RELEASE) { g_mouse_down = false; handleClick(); }
+    }
+}
+
+fn cursorPosCallback(_: ?*glfw.GLFWwindow, xpos: f64, ypos: f64) callconv(.c) void {
+    g_mouse_pos = .{ .x = @floatCast(xpos), .y = @floatCast(ypos) };
+    handleSliderDrag();
+}
+
+// ============================================================================
+// Main
+// ============================================================================
 
 pub fn main() !void {
-    std.debug.print("=== zapui Playground (Text Rendering Demo) ===\n\n", .{});
+    if (glfw.glfwInit() == 0) return;
+    defer glfw.glfwTerminate();
 
-    // Initialize GLFW
-    if (c.glfwInit() == 0) {
-        std.debug.print("Failed to initialize GLFW\n", .{});
-        return error.GlfwInitFailed;
-    }
-    defer c.glfwTerminate();
+    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfw.glfwWindowHint(glfw.GLFW_OPENGL_PROFILE, glfw.GLFW_OPENGL_CORE_PROFILE);
+    glfw.glfwWindowHint(glfw.GLFW_OPENGL_FORWARD_COMPAT, 1);
 
-    // Request OpenGL 3.3 Core
-    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, 3);
-    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 3);
-    c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
-    c.glfwWindowHint(c.GLFW_OPENGL_FORWARD_COMPAT, c.GLFW_TRUE);
+    const win = glfw.glfwCreateWindow(800, 600, "ZapUI - Div API Demo", null, null) orelse return;
+    defer glfw.glfwDestroyWindow(win);
 
-    // Create window
-    const window = c.glfwCreateWindow(800, 600, "zapui playground - Text Demo", null, null) orelse {
-        std.debug.print("Failed to create GLFW window\n", .{});
-        return error.WindowCreationFailed;
-    };
-    defer c.glfwDestroyWindow(window);
+    glfw.glfwMakeContextCurrent(win);
+    glfw.glfwSwapInterval(1);
+    _ = glfw.glfwSetMouseButtonCallback(win, mouseButtonCallback);
+    _ = glfw.glfwSetCursorPosCallback(win, cursorPosCallback);
 
-    c.glfwMakeContextCurrent(window);
-    c.glfwSwapInterval(1); // VSync
-
-    // Load OpenGL functions
-    const glGetProcAddress = struct {
-        fn getProcAddress(name: [*:0]const u8) ?*anyopaque {
-            const ptr = c.glfwGetProcAddress(name);
-            return @ptrCast(@constCast(ptr));
+    try zapui.loadGl(struct {
+        pub fn getProcAddress(name: [*:0]const u8) ?*anyopaque {
+            return @ptrCast(@constCast(glfw.glfwGetProcAddress(name)));
         }
-    }.getProcAddress;
-    try zapui.loadGl(glGetProcAddress);
-    std.debug.print("OpenGL loaded successfully\n", .{});
+    }.getProcAddress);
 
-    // Create allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.heap.page_allocator;
+    var renderer = try GlRenderer.init(allocator);
+    defer renderer.deinit();
 
-    // Create UI
-    var ui = try zapui.Ui.init(.{
-        .allocator = allocator,
-        .viewport_width = 800,
-        .viewport_height = 600,
-    });
-    defer ui.deinit();
-    global_ui = &ui;
-
-    // Initialize renderer
-    try ui.initRenderer();
-    std.debug.print("Renderer initialized\n", .{});
-
-    // Create text system
-    var text_system = zapui.TextSystem.init(allocator);
+    var text_system = TextSystem.init(allocator);
     defer text_system.deinit();
-    global_text = &text_system;
+    _ = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch return;
+    text_system.setAtlas(renderer.getGlyphAtlas());
 
-    // Use the renderer's glyph atlas for text
-    if (ui.renderer) |*r| {
-        text_system.setAtlas(r.getGlyphAtlas());
-    }
+    while (glfw.glfwWindowShouldClose(win) == 0) {
+        glfw.glfwPollEvents();
 
-    // Load font
-    const font = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch |err| {
-        std.debug.print("Failed to load font: {}\n", .{err});
-        std.debug.print("Please ensure assets/fonts/LiberationSans-Regular.ttf exists\n", .{});
-        return err;
-    };
-    global_font = font;
-    std.debug.print("Font loaded successfully\n\n", .{});
+        var ww: c_int = 0;
+        var wh: c_int = 0;
+        glfw.glfwGetFramebufferSize(win, &ww, &wh);
+        const width: Pixels = @floatFromInt(ww);
+        const height: Pixels = @floatFromInt(wh);
+        
+        renderer.setViewport(width, height, 1.0);
 
-    // Set up GLFW callbacks for mouse input
-    _ = c.glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    _ = c.glfwSetCursorPosCallback(window, cursorPosCallback);
+        var tree = taffy.Taffy.init(allocator);
+        defer tree.deinit();
+        var scene = Scene.init(allocator);
+        defer scene.deinit();
+        
+        try buildUI(&tree, &scene, &text_system, width, height);
 
-    // Main loop
-    var frame_count: u64 = 0;
-    var needs_render = true;
-
-    while (c.glfwWindowShouldClose(window) == 0) {
-        c.glfwPollEvents();
-
-        // Get window size
-        var width: c_int = 0;
-        var height: c_int = 0;
-        c.glfwGetFramebufferSize(window, &width, &height);
-        ui.setViewport(@floatFromInt(width), @floatFromInt(height), 1.0);
-
-        if (needs_render or ui.needsRedraw()) {
-            ui.beginFrame();
-
-            renderUI(&ui, &text_system, font, @floatFromInt(width), @floatFromInt(height));
-
-            try ui.endFrame(zapui.rgb(0x1a202c));
-            c.glfwSwapBuffers(window);
-            needs_render = false;
-        }
-
-        frame_count += 1;
-    }
-
-    std.debug.print("\n=== Playground finished ({} frames) ===\n", .{frame_count});
-}
-
-fn mouseButtonCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods: c_int) callconv(.c) void {
-    _ = window;
-    _ = mods;
-
-    if (button == c.GLFW_MOUSE_BUTTON_LEFT and action == c.GLFW_PRESS) {
-        if (global_ui) |ui| {
-            const pos = ui.mouse_state.position;
-
-            // Check increment button
-            if (inc_button_bounds.contains(pos)) {
-                click_count += 1;
-                std.debug.print("Count: {} (+)\n", .{click_count});
-                ui.requestRedraw();
-                return;
-            }
-
-            // Check decrement button
-            if (dec_button_bounds.contains(pos)) {
-                click_count -= 1;
-                std.debug.print("Count: {} (-)\n", .{click_count});
-                ui.requestRedraw();
-                return;
-            }
-
-            // Check color buttons
-            for (color_button_bounds, 0..) |bounds, i| {
-                if (bounds.contains(pos)) {
-                    selected_color = i;
-                    std.debug.print("Color: {s}\n", .{color_names[i]});
-                    ui.requestRedraw();
-                    return;
-                }
-            }
-        }
-    }
-}
-
-fn cursorPosCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(.c) void {
-    _ = window;
-    if (global_ui) |ui| {
-        ui.mouse_state.position = .{ .x = @floatCast(xpos), .y = @floatCast(ypos) };
-    }
-}
-
-fn renderUI(ui: *zapui.Ui, text_system: *zapui.TextSystem, font: zapui.FontId, width: f32, height: f32) void {
-    const scene = &ui.scene;
-    const current_color = colors[selected_color];
-    const center_x = width / 2;
-
-    // Background
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(0, 0, width, height),
-        .background = .{ .solid = zapui.rgb(0x1a202c) },
-    }) catch {};
-
-    // Header bar
-    const header_w: f32 = 500;
-    const header_h: f32 = 100;
-    const header_x = center_x - header_w / 2;
-    const header_y: f32 = 50;
-
-    scene.insertShadow(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(header_x, header_y, header_w, header_h),
-        .corner_radii = zapui.Corners(f32).all(16),
-        .blur_radius = 20,
-        .color = zapui.black().withAlpha(0.3),
-    }) catch {};
-
-    scene.insertQuad(.{
-        .bounds = zapui.Bounds(f32).fromXYWH(header_x, header_y, header_w, header_h),
-        .background = .{ .solid = zapui.rgb(current_color) },
-        .corner_radii = zapui.Corners(f32).all(16),
-    }) catch {};
-
-
-    
-    // Title text  
-    const title = "zapui Text Demo";
-    const title_size: f32 = 28;
-    const title_width = text_system.measureText(title, font, title_size);
-    const title_metrics = text_system.getFontMetrics(font, title_size);
-    const title_x = center_x - title_width / 2;
-    const title_y = header_y + header_h / 2 - title_metrics.ascent / 2;
-
-    renderText(scene, text_system, font, title, title_x, title_y + title_metrics.ascent, title_size, zapui.rgb(0xffffff));
-
-    // Subtitle with count
-    var count_buf: [32]u8 = undefined;
-    const count_text = std.fmt.bufPrint(&count_buf, "Count: {}", .{click_count}) catch "Count: ?";
-    const count_size: f32 = 18;
-    const count_width = text_system.measureText(count_text, font, count_size);
-    const count_x = center_x - count_width / 2;
-
-    renderText(scene, text_system, font, count_text, count_x, header_y + header_h - 15, count_size, zapui.rgb(0xffffff).withAlpha(0.8));
-
-    // Buttons
-    const button_w: f32 = 100;
-    const button_h: f32 = 50;
-    const button_y: f32 = 200;
-    const button_gap: f32 = 40;
-
-    // Decrement button (red, left)
-    const dec_x = center_x - button_w - button_gap / 2;
-    dec_button_bounds = zapui.Bounds(f32).fromXYWH(dec_x, button_y, button_w, button_h);
-
-    scene.insertShadow(.{
-        .bounds = dec_button_bounds,
-        .corner_radii = zapui.Corners(f32).all(12),
-        .blur_radius = 10,
-        .color = zapui.black().withAlpha(0.2),
-    }) catch {};
-
-    scene.insertQuad(.{
-        .bounds = dec_button_bounds,
-        .background = .{ .solid = zapui.rgb(0xf56565) },
-        .corner_radii = zapui.Corners(f32).all(12),
-    }) catch {};
-
-    // Minus sign text
-    renderText(scene, text_system, font, "-", dec_x + button_w / 2 - 6, button_y + button_h / 2 + 10, 32, zapui.rgb(0xffffff));
-
-    // Increment button (green, right)
-    const inc_x = center_x + button_gap / 2;
-    inc_button_bounds = zapui.Bounds(f32).fromXYWH(inc_x, button_y, button_w, button_h);
-
-    scene.insertShadow(.{
-        .bounds = inc_button_bounds,
-        .corner_radii = zapui.Corners(f32).all(12),
-        .blur_radius = 10,
-        .color = zapui.black().withAlpha(0.2),
-    }) catch {};
-
-    scene.insertQuad(.{
-        .bounds = inc_button_bounds,
-        .background = .{ .solid = zapui.rgb(0x48bb78) },
-        .corner_radii = zapui.Corners(f32).all(12),
-    }) catch {};
-
-    // Plus sign text
-    renderText(scene, text_system, font, "+", inc_x + button_w / 2 - 8, button_y + button_h / 2 + 10, 32, zapui.rgb(0xffffff));
-
-    // Color picker
-    const color_size: f32 = 50;
-    const color_gap: f32 = 15;
-    const color_y: f32 = 300;
-    const total_color_w = color_size * 5 + color_gap * 4;
-    const color_start_x = center_x - total_color_w / 2;
-
-    for (colors, 0..) |clr, i| {
-        const is_selected = i == selected_color;
-        const size: f32 = if (is_selected) 58 else color_size;
-        const offset: f32 = if (is_selected) -4 else 0;
-        const x = color_start_x + @as(f32, @floatFromInt(i)) * (color_size + color_gap) + offset;
-        const y = color_y + offset;
-
-        color_button_bounds[i] = zapui.Bounds(f32).fromXYWH(x, y, size, size);
-
-        // Shadow
-        scene.insertShadow(.{
-            .bounds = color_button_bounds[i],
-            .corner_radii = zapui.Corners(f32).all(if (is_selected) 14 else 10),
-            .blur_radius = if (is_selected) 15 else 8,
-            .color = zapui.black().withAlpha(if (is_selected) 0.3 else 0.2),
-        }) catch {};
-
-        // Color square
-        scene.insertQuad(.{
-            .bounds = color_button_bounds[i],
-            .background = .{ .solid = zapui.rgb(clr) },
-            .corner_radii = zapui.Corners(f32).all(if (is_selected) 14 else 10),
-            .border_widths = if (is_selected) zapui.Edges(f32).all(3) else zapui.Edges(f32).zero,
-            .border_color = if (is_selected) zapui.rgb(0xffffff) else null,
-        }) catch {};
-    }
-
-    // Color name label
-    const name_text = color_names[selected_color];
-    const name_size: f32 = 16;
-    const name_width = text_system.measureText(name_text, font, name_size);
-    renderText(scene, text_system, font, name_text, center_x - name_width / 2, color_y + 80, name_size, zapui.rgb(0xa0aec0));
-
-    // Instructions
-    const instr1 = "Click + or - to change the count";
-    const instr2 = "Click colors to change the header";
-    const instr_size: f32 = 14;
-    const instr1_w = text_system.measureText(instr1, font, instr_size);
-    const instr2_w = text_system.measureText(instr2, font, instr_size);
-
-    renderText(scene, text_system, font, instr1, center_x - instr1_w / 2, height - 70, instr_size, zapui.rgb(0x718096));
-    renderText(scene, text_system, font, instr2, center_x - instr2_w / 2, height - 45, instr_size, zapui.rgb(0x718096));
-
-    scene.finish();
-}
-
-fn renderText(scene: *zapui.Scene, text_system: *zapui.TextSystem, font: zapui.FontId, text: []const u8, x: f32, y: f32, size: f32, clr: zapui.Hsla) void {
-    var run = text_system.shapeText(text, font, size) catch return;
-    defer text_system.freeShapedRun(&run);
-
-    var cursor_x = x;
-    for (run.glyphs) |glyph| {
-        if (text_system.rasterizeGlyph(font, glyph.glyph_id, size)) |cached| {
-            if (cached.pixel_bounds.width() > 0 and cached.pixel_bounds.height() > 0) {
-                const gx = cursor_x + cached.pixel_bounds.x();
-                const gy = y + cached.pixel_bounds.y();
-                const gw = cached.pixel_bounds.width();
-                const gh = cached.pixel_bounds.height();
-
-                // Add monochrome sprite to scene
-                scene.insertMonoSprite(.{
-                    .bounds = zapui.Bounds(f32).fromXYWH(gx, gy, gw, gh),
-                    .tile_bounds = cached.atlas_bounds,
-                    .color = clr,
-                }) catch {};
-            }
-        }
-        cursor_x += glyph.x_advance;
+        renderer.clear(C.bg_dark);
+        try renderer.drawScene(&scene);
+        glfw.glfwSwapBuffers(win);
     }
 }

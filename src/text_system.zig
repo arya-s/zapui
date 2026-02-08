@@ -377,6 +377,43 @@ pub const TextSystem = struct {
         return cached;
     }
 
+    /// Convenience method to render text directly to a scene
+    pub fn renderText(
+        self: *TextSystem,
+        scene: *@import("scene.zig").Scene,
+        text_str: []const u8,
+        x: Pixels,
+        y: Pixels,
+        size: Pixels,
+        text_color: @import("color.zig").Hsla,
+    ) !void {
+        const font_id: FontId = 0; // Default to first loaded font
+
+        // Shape the text
+        var run = try self.shapeText(text_str, font_id, size);
+        defer self.freeShapedRun(&run);
+
+        // Render each glyph
+        var glyph_x = x;
+        for (run.glyphs) |glyph| {
+            if (self.rasterizeGlyph(font_id, glyph.glyph_id, size)) |cached| {
+                if (cached.pixel_bounds.size.width > 0 and cached.pixel_bounds.size.height > 0) {
+                    try scene.insertMonoSprite(.{
+                        .bounds = Bounds(Pixels).fromXYWH(
+                            glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x,
+                            y + cached.pixel_bounds.origin.y,
+                            cached.pixel_bounds.size.width,
+                            cached.pixel_bounds.size.height,
+                        ),
+                        .color = text_color,
+                        .tile_bounds = cached.atlas_bounds,
+                    });
+                }
+            }
+            glyph_x += glyph.x_advance;
+        }
+    }
+
     /// Measure text width without shaping
     pub fn measureText(self: *TextSystem, text: []const u8, font_id: FontId, size: Pixels) Pixels {
         if (font_id >= self.fonts.items.len) return 0;

@@ -1,629 +1,522 @@
-//! Div element - the fundamental container element for zapui.
-//! Provides a fluent builder API for constructing styled containers.
+//! Div - Declarative UI element with Taffy layout
+//!
+//! API designed to match GPUI's div() API exactly.
+//! Uses zapui's unified Style struct for layout and visual properties.
 
 const std = @import("std");
-const geometry = @import("../geometry.zig");
-const style_mod = @import("../style.zig");
-const color_mod = @import("../color.zig");
-const layout_mod = @import("../layout.zig");
+const taffy = @import("../taffy.zig");
 const scene_mod = @import("../scene.zig");
-const element_mod = @import("../element.zig");
-const input_mod = @import("../input.zig");
-const app_mod = @import("../app.zig");
+const text_system_mod = @import("../text_system.zig");
+const geometry = @import("../geometry.zig");
+const color_mod = @import("../color.zig");
+const style_mod = @import("../style.zig");
 
-const Allocator = std.mem.Allocator;
-const Pixels = geometry.Pixels;
+const Scene = scene_mod.Scene;
+const TextSystem = text_system_mod.TextSystem;
 const Bounds = geometry.Bounds;
+const Point = geometry.Point;
+const Pixels = geometry.Pixels;
 const Corners = geometry.Corners;
 const Edges = geometry.Edges;
+const Hsla = color_mod.Hsla;
 const Style = style_mod.Style;
 const Length = style_mod.Length;
-const Background = style_mod.Background;
-const FlexDirection = style_mod.FlexDirection;
-const AlignItems = style_mod.AlignItems;
-const JustifyContent = style_mod.JustifyContent;
-const Hsla = color_mod.Hsla;
-const LayoutId = layout_mod.LayoutId;
-const LayoutStyle = layout_mod.LayoutStyle;
-const RenderContext = element_mod.RenderContext;
-const AnyElement = element_mod.AnyElement;
-const intoAnyElement = element_mod.intoAnyElement;
-const Cursor = input_mod.Cursor;
-const HitboxId = input_mod.HitboxId;
-const MouseDownEvent = input_mod.MouseDownEvent;
-const MouseUpEvent = input_mod.MouseUpEvent;
-const MouseMoveEvent = input_mod.MouseMoveEvent;
-const App = app_mod.App;
 
-/// Event handler types
-pub const MouseDownHandler = *const fn (*App, MouseDownEvent) void;
-pub const MouseUpHandler = *const fn (*App, MouseUpEvent) void;
-pub const ClickHandler = *const fn (*App) void;
-pub const HoverHandler = *const fn (*App, bool) void;
+// ============================================================================
+// GPUI-compatible unit wrapper
+// ============================================================================
 
-/// Div element - a styled container
+/// Pixel value wrapper (matches GPUI's px())
+pub const Px = struct {
+    value: Pixels,
+};
+
+/// Create a pixel value (matches GPUI's px() function)
+pub fn px(value: anytype) Px {
+    return .{ .value = @floatCast(switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(f64, @floatFromInt(value)),
+        .float, .comptime_float => @as(f64, value),
+        else => @compileError("px() requires a number"),
+    }) };
+}
+
+/// Rems value wrapper (matches GPUI's rems())
+pub const Rems = struct {
+    value: f32,
+};
+
+/// Create a rems value
+pub fn rems(value: anytype) Rems {
+    return .{ .value = @floatCast(switch (@typeInfo(@TypeOf(value))) {
+        .int, .comptime_int => @as(f64, @floatFromInt(value)),
+        .float, .comptime_float => @as(f64, value),
+        else => @compileError("rems() requires a number"),
+    }) };
+}
+
+// ============================================================================
+// Div Element
+// ============================================================================
+
+pub const MAX_CHILDREN = 8;
+
 pub const Div = struct {
+    style: Style = .{},
+    text_content_val: ?[]const u8 = null,
+    text_size_val: Pixels = 14,
+    text_color_val: Hsla = color_mod.rgb(0xe2e8f0),
+    hitbox_id: ?usize = null,
+    children: [MAX_CHILDREN]?*Div = [_]?*Div{null} ** MAX_CHILDREN,
+    child_count: usize = 0,
+    node_id: ?taffy.NodeId = null,
+    
+    // Hover styles (applied when hovered)
+    hover_bg_val: ?Hsla = null,
+    hover_border_color_val: ?Hsla = null,
+    hover_text_color_val: ?Hsla = null,
+
     const Self = @This();
 
-    allocator: Allocator,
-    style: Style = .{},
-    children_list: std.ArrayListUnmanaged(AnyElement) = .{ .items = &.{}, .capacity = 0 },
-    child_layout_ids: std.ArrayListUnmanaged(LayoutId) = .{ .items = &.{}, .capacity = 0 },
-
-    // Event handlers
-    on_mouse_down: ?MouseDownHandler = null,
-    on_mouse_up: ?MouseUpHandler = null,
-    on_click: ?ClickHandler = null,
-    on_hover: ?HoverHandler = null,
-    cursor_style: Cursor = .default,
-
-    // Runtime state
-    hitbox_id: ?HitboxId = null,
-    is_hovered: bool = false,
-
-    /// Create a new Div
-    pub fn init(allocator: Allocator) *Div {
-        const d = allocator.create(Div) catch @panic("OOM");
-        d.* = .{ .allocator = allocator };
-        return d;
-    }
-
-    /// Clean up resources
-    pub fn deinit(self: *Self, allocator: Allocator) void {
-        for (self.children_list.items) |*c| {
-            c.deinit(allocator);
-        }
-        self.children_list.deinit(allocator);
-        self.child_layout_ids.deinit(allocator);
-        allocator.destroy(self);
-    }
-
     // ========================================================================
-    // Fluent builder API - Display & Flex
+    // Display
     // ========================================================================
 
-    pub fn flex(self: *Self) *Self {
-        self.style.display = .flex;
+    pub fn flex(self: *Self) *Self { self.style.display = .flex; return self; }
+    pub fn block(self: *Self) *Self { self.style.display = .block; return self; }
+    pub fn hidden(self: *Self) *Self { self.style.display = .none; return self; }
+
+    // ========================================================================
+    // Flex Direction
+    // ========================================================================
+
+    pub fn flex_col(self: *Self) *Self { self.style.flex_direction = .column; return self; }
+    pub fn flex_col_reverse(self: *Self) *Self { self.style.flex_direction = .column_reverse; return self; }
+    pub fn flex_row(self: *Self) *Self { self.style.flex_direction = .row; return self; }
+    pub fn flex_row_reverse(self: *Self) *Self { self.style.flex_direction = .row_reverse; return self; }
+
+    // ========================================================================
+    // Flex Properties
+    // ========================================================================
+
+    pub fn flex_grow(self: *Self) *Self { self.style.flex_grow = 1; return self; }
+    pub fn flex_shrink(self: *Self) *Self { self.style.flex_shrink = 1; return self; }
+    pub fn flex_shrink_0(self: *Self) *Self { self.style.flex_shrink = 0; return self; }
+    pub fn flex_1(self: *Self) *Self { 
+        self.style.flex_grow = 1; 
+        self.style.flex_shrink = 1; 
+        self.style.flex_basis = .{ .px = 0 }; 
+        return self; 
+    }
+    pub fn flex_auto(self: *Self) *Self {
+        self.style.flex_grow = 1;
+        self.style.flex_shrink = 1;
+        self.style.flex_basis = .auto;
         return self;
     }
-
-    pub fn flexRow(self: *Self) *Self {
-        self.style.flex_direction = .row;
+    pub fn flex_none(self: *Self) *Self {
+        self.style.flex_grow = 0;
+        self.style.flex_shrink = 0;
         return self;
     }
+    pub fn flex_wrap(self: *Self) *Self { self.style.flex_wrap = .wrap; return self; }
+    pub fn flex_wrap_reverse(self: *Self) *Self { self.style.flex_wrap = .wrap_reverse; return self; }
+    pub fn flex_nowrap(self: *Self) *Self { self.style.flex_wrap = .no_wrap; return self; }
 
-    pub fn flexCol(self: *Self) *Self {
-        self.style.flex_direction = .column;
-        return self;
-    }
+    // ========================================================================
+    // Size
+    // ========================================================================
 
-    pub fn flexRowReverse(self: *Self) *Self {
-        self.style.flex_direction = .row_reverse;
-        return self;
+    pub fn w(self: *Self, width: Px) *Self { self.style.size.width = .{ .px = width.value }; return self; }
+    pub fn h(self: *Self, height: Px) *Self { self.style.size.height = .{ .px = height.value }; return self; }
+    pub fn size_full(self: *Self) *Self { 
+        self.style.size.width = .{ .percent = 100 }; 
+        self.style.size.height = .{ .percent = 100 }; 
+        return self; 
     }
+    pub fn w_full(self: *Self) *Self { self.style.size.width = .{ .percent = 100 }; return self; }
+    pub fn h_full(self: *Self) *Self { self.style.size.height = .{ .percent = 100 }; return self; }
+    pub fn w_auto(self: *Self) *Self { self.style.size.width = .auto; return self; }
+    pub fn h_auto(self: *Self) *Self { self.style.size.height = .auto; return self; }
+    pub fn min_w(self: *Self, width: Px) *Self { self.style.min_size.width = .{ .px = width.value }; return self; }
+    pub fn min_h(self: *Self, height: Px) *Self { self.style.min_size.height = .{ .px = height.value }; return self; }
+    pub fn max_w(self: *Self, width: Px) *Self { self.style.max_size.width = .{ .px = width.value }; return self; }
+    pub fn max_h(self: *Self, height: Px) *Self { self.style.max_size.height = .{ .px = height.value }; return self; }
 
-    pub fn flexColReverse(self: *Self) *Self {
-        self.style.flex_direction = .column_reverse;
-        return self;
-    }
+    // ========================================================================
+    // Gap
+    // ========================================================================
 
-    pub fn flexGrow(self: *Self, value: f32) *Self {
-        self.style.flex_grow = value;
-        return self;
+    pub fn gap(self: *Self, val: Px) *Self { 
+        self.style.gap = .{ .width = .{ .px = val.value }, .height = .{ .px = val.value } }; 
+        return self; 
     }
+    pub fn gap_x(self: *Self, val: Px) *Self { self.style.gap.width = .{ .px = val.value }; return self; }
+    pub fn gap_y(self: *Self, val: Px) *Self { self.style.gap.height = .{ .px = val.value }; return self; }
 
-    pub fn flexShrink(self: *Self, value: f32) *Self {
-        self.style.flex_shrink = value;
-        return self;
-    }
+    // ========================================================================
+    // Padding
+    // ========================================================================
 
-    pub fn flexBasis(self: *Self, value: Length) *Self {
-        self.style.flex_basis = value;
-        return self;
+    pub fn p(self: *Self, val: Px) *Self { 
+        self.style.padding = Edges(Length).all(.{ .px = val.value }); 
+        return self; 
     }
+    pub fn padding(self: *Self, val: Px) *Self { return self.p(val); }
+    pub fn px(self: *Self, val: Px) *Self {
+        self.style.padding.left = .{ .px = val.value }; 
+        self.style.padding.right = .{ .px = val.value }; 
+        return self; 
+    }
+    pub fn py(self: *Self, val: Px) *Self { 
+        self.style.padding.top = .{ .px = val.value }; 
+        self.style.padding.bottom = .{ .px = val.value }; 
+        return self; 
+    }
+    pub fn pt(self: *Self, val: Px) *Self { self.style.padding.top = .{ .px = val.value }; return self; }
+    pub fn pr(self: *Self, val: Px) *Self { self.style.padding.right = .{ .px = val.value }; return self; }
+    pub fn pb(self: *Self, val: Px) *Self { self.style.padding.bottom = .{ .px = val.value }; return self; }
+    pub fn pl(self: *Self, val: Px) *Self { self.style.padding.left = .{ .px = val.value }; return self; }
 
-    pub fn grow(self: *Self) *Self {
-        return self.flexGrow(1);
-    }
+    // ========================================================================
+    // Margin
+    // ========================================================================
 
-    pub fn shrink(self: *Self) *Self {
-        return self.flexShrink(1);
+    pub fn m(self: *Self, val: Px) *Self { 
+        self.style.margin = Edges(Length).all(.{ .px = val.value }); 
+        return self; 
     }
+    pub fn margin(self: *Self, val: Px) *Self { return self.m(val); }
+    pub fn mx(self: *Self, val: Px) *Self { 
+        self.style.margin.left = .{ .px = val.value }; 
+        self.style.margin.right = .{ .px = val.value }; 
+        return self; 
+    }
+    pub fn my(self: *Self, val: Px) *Self { 
+        self.style.margin.top = .{ .px = val.value }; 
+        self.style.margin.bottom = .{ .px = val.value }; 
+        return self; 
+    }
+    pub fn mt(self: *Self, val: Px) *Self { self.style.margin.top = .{ .px = val.value }; return self; }
+    pub fn mr(self: *Self, val: Px) *Self { self.style.margin.right = .{ .px = val.value }; return self; }
+    pub fn mb(self: *Self, val: Px) *Self { self.style.margin.bottom = .{ .px = val.value }; return self; }
+    pub fn ml(self: *Self, val: Px) *Self { self.style.margin.left = .{ .px = val.value }; return self; }
+    pub fn m_auto(self: *Self) *Self { self.style.margin = Edges(Length).all(.auto); return self; }
+    pub fn mx_auto(self: *Self) *Self { self.style.margin.left = .auto; self.style.margin.right = .auto; return self; }
 
     // ========================================================================
     // Alignment
     // ========================================================================
 
-    pub fn justifyStart(self: *Self) *Self {
-        self.style.justify_content = .flex_start;
-        return self;
-    }
+    pub fn justify_start(self: *Self) *Self { self.style.justify_content = .flex_start; return self; }
+    pub fn justify_end(self: *Self) *Self { self.style.justify_content = .flex_end; return self; }
+    pub fn justify_center(self: *Self) *Self { self.style.justify_content = .center; return self; }
+    pub fn justify_between(self: *Self) *Self { self.style.justify_content = .space_between; return self; }
+    pub fn justify_around(self: *Self) *Self { self.style.justify_content = .space_around; return self; }
+    pub fn justify_evenly(self: *Self) *Self { self.style.justify_content = .space_evenly; return self; }
 
-    pub fn justifyEnd(self: *Self) *Self {
-        self.style.justify_content = .flex_end;
-        return self;
-    }
+    pub fn items_start(self: *Self) *Self { self.style.align_items = .flex_start; return self; }
+    pub fn items_end(self: *Self) *Self { self.style.align_items = .flex_end; return self; }
+    pub fn items_center(self: *Self) *Self { self.style.align_items = .center; return self; }
+    pub fn items_stretch(self: *Self) *Self { self.style.align_items = .stretch; return self; }
+    pub fn items_baseline(self: *Self) *Self { self.style.align_items = .baseline; return self; }
 
-    pub fn justifyCenter(self: *Self) *Self {
-        self.style.justify_content = .center;
-        return self;
-    }
+    pub fn self_start(self: *Self) *Self { self.style.align_self = .flex_start; return self; }
+    pub fn self_end(self: *Self) *Self { self.style.align_self = .flex_end; return self; }
+    pub fn self_center(self: *Self) *Self { self.style.align_self = .center; return self; }
+    pub fn self_stretch(self: *Self) *Self { self.style.align_self = .stretch; return self; }
 
-    pub fn justifyBetween(self: *Self) *Self {
-        self.style.justify_content = .space_between;
-        return self;
-    }
-
-    pub fn justifyAround(self: *Self) *Self {
-        self.style.justify_content = .space_around;
-        return self;
-    }
-
-    pub fn justifyEvenly(self: *Self) *Self {
-        self.style.justify_content = .space_evenly;
-        return self;
-    }
-
-    pub fn itemsStart(self: *Self) *Self {
-        self.style.align_items = .flex_start;
-        return self;
-    }
-
-    pub fn itemsEnd(self: *Self) *Self {
-        self.style.align_items = .flex_end;
-        return self;
-    }
-
-    pub fn itemsCenter(self: *Self) *Self {
-        self.style.align_items = .center;
-        return self;
-    }
-
-    pub fn itemsStretch(self: *Self) *Self {
-        self.style.align_items = .stretch;
-        return self;
-    }
+    pub fn content_start(self: *Self) *Self { self.style.align_content = .flex_start; return self; }
+    pub fn content_end(self: *Self) *Self { self.style.align_content = .flex_end; return self; }
+    pub fn content_center(self: *Self) *Self { self.style.align_content = .center; return self; }
+    pub fn content_stretch(self: *Self) *Self { self.style.align_content = .stretch; return self; }
+    pub fn content_between(self: *Self) *Self { self.style.align_content = .space_between; return self; }
+    pub fn content_around(self: *Self) *Self { self.style.align_content = .space_around; return self; }
 
     // ========================================================================
-    // Sizing
+    // Position
     // ========================================================================
 
-    pub fn w(self: *Self, value: Length) *Self {
-        self.style.size.width = value;
-        return self;
-    }
-
-    pub fn h(self: *Self, value: Length) *Self {
-        self.style.size.height = value;
-        return self;
-    }
-
-    pub fn size(self: *Self, width: Length, height: Length) *Self {
-        self.style.size.width = width;
-        self.style.size.height = height;
-        return self;
-    }
-
-    pub fn wFull(self: *Self) *Self {
-        self.style.size.width = .{ .percent = 100.0 };
-        return self;
-    }
-
-    pub fn hFull(self: *Self) *Self {
-        self.style.size.height = .{ .percent = 100.0 };
-        return self;
-    }
-
-    pub fn minW(self: *Self, value: Length) *Self {
-        self.style.min_size.width = value;
-        return self;
-    }
-
-    pub fn minH(self: *Self, value: Length) *Self {
-        self.style.min_size.height = value;
-        return self;
-    }
-
-    pub fn maxW(self: *Self, value: Length) *Self {
-        self.style.max_size.width = value;
-        return self;
-    }
-
-    pub fn maxH(self: *Self, value: Length) *Self {
-        self.style.max_size.height = value;
-        return self;
-    }
+    pub fn relative(self: *Self) *Self { self.style.position = .relative; return self; }
+    pub fn absolute(self: *Self) *Self { self.style.position = .absolute; return self; }
+    pub fn top(self: *Self, val: Px) *Self { self.style.inset.top = .{ .px = val.value }; return self; }
+    pub fn right(self: *Self, val: Px) *Self { self.style.inset.right = .{ .px = val.value }; return self; }
+    pub fn bottom(self: *Self, val: Px) *Self { self.style.inset.bottom = .{ .px = val.value }; return self; }
+    pub fn left(self: *Self, val: Px) *Self { self.style.inset.left = .{ .px = val.value }; return self; }
 
     // ========================================================================
-    // Spacing
+    // Background
     // ========================================================================
 
-    pub fn p(self: *Self, value: Length) *Self {
-        self.style.padding = Edges(Length).all(value);
-        return self;
-    }
-
-    pub fn px(self: *Self, value: Length) *Self {
-        self.style.padding.left = value;
-        self.style.padding.right = value;
-        return self;
-    }
-
-    pub fn py(self: *Self, value: Length) *Self {
-        self.style.padding.top = value;
-        self.style.padding.bottom = value;
-        return self;
-    }
-
-    pub fn pt(self: *Self, value: Length) *Self {
-        self.style.padding.top = value;
-        return self;
-    }
-
-    pub fn pr(self: *Self, value: Length) *Self {
-        self.style.padding.right = value;
-        return self;
-    }
-
-    pub fn pb(self: *Self, value: Length) *Self {
-        self.style.padding.bottom = value;
-        return self;
-    }
-
-    pub fn pl(self: *Self, value: Length) *Self {
-        self.style.padding.left = value;
-        return self;
-    }
-
-    pub fn m(self: *Self, value: Length) *Self {
-        self.style.margin = Edges(Length).all(value);
-        return self;
-    }
-
-    pub fn mx(self: *Self, value: Length) *Self {
-        self.style.margin.left = value;
-        self.style.margin.right = value;
-        return self;
-    }
-
-    pub fn my(self: *Self, value: Length) *Self {
-        self.style.margin.top = value;
-        self.style.margin.bottom = value;
-        return self;
-    }
-
-    pub fn gap(self: *Self, value: Length) *Self {
-        self.style.gap.width = value;
-        self.style.gap.height = value;
-        return self;
-    }
-
-    pub fn gapX(self: *Self, value: Length) *Self {
-        self.style.gap.width = value;
-        return self;
-    }
-
-    pub fn gapY(self: *Self, value: Length) *Self {
-        self.style.gap.height = value;
-        return self;
-    }
-
-    // ========================================================================
-    // Tailwind-style spacing shortcuts (in rems)
-    // ========================================================================
-
-    pub fn p1(self: *Self) *Self { return self.p(.{ .rems = 0.25 }); }
-    pub fn p2(self: *Self) *Self { return self.p(.{ .rems = 0.5 }); }
-    pub fn p3(self: *Self) *Self { return self.p(.{ .rems = 0.75 }); }
-    pub fn p4(self: *Self) *Self { return self.p(.{ .rems = 1.0 }); }
-    pub fn p5(self: *Self) *Self { return self.p(.{ .rems = 1.25 }); }
-    pub fn p6(self: *Self) *Self { return self.p(.{ .rems = 1.5 }); }
-    pub fn p8(self: *Self) *Self { return self.p(.{ .rems = 2.0 }); }
-
-    pub fn gap1(self: *Self) *Self { return self.gap(.{ .rems = 0.25 }); }
-    pub fn gap2(self: *Self) *Self { return self.gap(.{ .rems = 0.5 }); }
-    pub fn gap3(self: *Self) *Self { return self.gap(.{ .rems = 0.75 }); }
-    pub fn gap4(self: *Self) *Self { return self.gap(.{ .rems = 1.0 }); }
-
-    // ========================================================================
-    // Background & Colors
-    // ========================================================================
-
-    pub fn bg(self: *Self, color: Hsla) *Self {
-        self.style.background = .{ .solid = color };
-        return self;
-    }
-
-    pub fn bgNone(self: *Self) *Self {
-        self.style.background = null;
-        return self;
-    }
+    pub fn bg(self: *Self, color: Hsla) *Self { self.style.background = .{ .solid = color }; return self; }
 
     // ========================================================================
     // Border
     // ========================================================================
 
-    pub fn border(self: *Self, width: Pixels) *Self {
-        self.style.border_widths = Edges(Pixels).all(width);
-        return self;
+    pub fn border_0(self: *Self) *Self { self.style.border_widths = Edges(Pixels).all(0); return self; }
+    pub fn border_1(self: *Self) *Self { self.style.border_widths = Edges(Pixels).all(1); return self; }
+    pub fn border_2(self: *Self) *Self { self.style.border_widths = Edges(Pixels).all(2); return self; }
+    pub fn border_3(self: *Self) *Self { self.style.border_widths = Edges(Pixels).all(3); return self; }
+    pub fn border_4(self: *Self) *Self { self.style.border_widths = Edges(Pixels).all(4); return self; }
+    pub fn border(self: *Self, width: Px) *Self { self.style.border_widths = Edges(Pixels).all(width.value); return self; }
+    pub fn border_t(self: *Self, width: Px) *Self { self.style.border_widths.top = width.value; return self; }
+    pub fn border_r(self: *Self, width: Px) *Self { self.style.border_widths.right = width.value; return self; }
+    pub fn border_b(self: *Self, width: Px) *Self { self.style.border_widths.bottom = width.value; return self; }
+    pub fn border_l(self: *Self, width: Px) *Self { self.style.border_widths.left = width.value; return self; }
+    pub fn border_color(self: *Self, color: Hsla) *Self { self.style.border_color = color; return self; }
+
+    pub fn rounded(self: *Self, radius: Px) *Self { self.style.corner_radii = Corners(Pixels).all(radius.value); return self; }
+    pub fn rounded_sm(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(2); return self; }
+    pub fn rounded_md(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(6); return self; }
+    pub fn rounded_lg(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(8); return self; }
+    pub fn rounded_xl(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(12); return self; }
+    pub fn rounded_full(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(9999); return self; }
+    pub fn rounded_t(self: *Self, radius: Px) *Self { 
+        self.style.corner_radii.top_left = radius.value; 
+        self.style.corner_radii.top_right = radius.value; 
+        return self; 
+    }
+    pub fn rounded_b(self: *Self, radius: Px) *Self { 
+        self.style.corner_radii.bottom_left = radius.value; 
+        self.style.corner_radii.bottom_right = radius.value; 
+        return self; 
     }
 
-    pub fn border1(self: *Self) *Self {
-        return self.border(1);
-    }
+    // ========================================================================
+    // Text
+    // ========================================================================
 
-    pub fn border2(self: *Self) *Self {
-        return self.border(2);
-    }
+    pub fn text_color(self: *Self, color: Hsla) *Self { self.text_color_val = color; return self; }
+    pub fn text_size(self: *Self, size: Px) *Self { self.text_size_val = size.value; return self; }
+    pub fn text_xs(self: *Self) *Self { self.text_size_val = 12; return self; }
+    pub fn text_sm(self: *Self) *Self { self.text_size_val = 14; return self; }
+    pub fn text_base(self: *Self) *Self { self.text_size_val = 16; return self; }
+    pub fn text_lg(self: *Self) *Self { self.text_size_val = 18; return self; }
+    pub fn text_xl(self: *Self) *Self { self.text_size_val = 20; return self; }
+    pub fn text_2xl(self: *Self) *Self { self.text_size_val = 24; return self; }
+    pub fn text_3xl(self: *Self) *Self { self.text_size_val = 30; return self; }
 
-    pub fn borderColor(self: *Self, color: Hsla) *Self {
-        self.style.border_color = color;
-        return self;
-    }
+    // ========================================================================
+    // Overflow
+    // ========================================================================
 
-    pub fn borderT(self: *Self, width: Pixels) *Self {
-        self.style.border_widths.top = width;
-        return self;
+    pub fn overflow_hidden(self: *Self) *Self { 
+        self.style.overflow.x = .hidden; 
+        self.style.overflow.y = .hidden; 
+        return self; 
     }
-
-    pub fn borderR(self: *Self, width: Pixels) *Self {
-        self.style.border_widths.right = width;
-        return self;
+    pub fn overflow_visible(self: *Self) *Self { 
+        self.style.overflow.x = .visible; 
+        self.style.overflow.y = .visible; 
+        return self; 
     }
+    pub fn overflow_x_hidden(self: *Self) *Self { self.style.overflow.x = .hidden; return self; }
+    pub fn overflow_y_hidden(self: *Self) *Self { self.style.overflow.y = .hidden; return self; }
 
-    pub fn borderB(self: *Self, width: Pixels) *Self {
-        self.style.border_widths.bottom = width;
-        return self;
-    }
+    // ========================================================================
+    // Interaction
+    // ========================================================================
 
-    pub fn borderL(self: *Self, width: Pixels) *Self {
-        self.style.border_widths.left = width;
+    pub fn id(self: *Self, hitbox_id: usize) *Self { self.hitbox_id = hitbox_id; return self; }
+
+    // ========================================================================
+    // Conditionals
+    // ========================================================================
+
+    /// Conditionally apply a transformation (like GPUI's .when())
+    /// Usage: div().when(condition, struct { fn f(d: *Div) *Div { return d.bg(color); } }.f)
+    pub fn when(self: *Self, condition: bool, apply: *const fn (*Self) *Self) *Self {
+        if (condition) {
+            return apply(self);
+        }
         return self;
     }
 
     // ========================================================================
-    // Border Radius
+    // Hover Styles
     // ========================================================================
 
-    pub fn rounded(self: *Self, radius: Pixels) *Self {
-        self.style.corner_radii = Corners(Pixels).all(radius);
-        return self;
+    /// Set background color on hover
+    pub fn hover_bg(self: *Self, color: Hsla) *Self { 
+        self.hover_bg_val = color; 
+        return self; 
     }
-
-    pub fn roundedSm(self: *Self) *Self { return self.rounded(2); }
-    pub fn roundedMd(self: *Self) *Self { return self.rounded(6); }
-    pub fn roundedLg(self: *Self) *Self { return self.rounded(8); }
-    pub fn roundedXl(self: *Self) *Self { return self.rounded(12); }
-    pub fn rounded2xl(self: *Self) *Self { return self.rounded(16); }
-    pub fn roundedFull(self: *Self) *Self { return self.rounded(9999); }
-
-    pub fn roundedT(self: *Self, radius: Pixels) *Self {
-        self.style.corner_radii.top_left = radius;
-        self.style.corner_radii.top_right = radius;
-        return self;
+    
+    /// Set border color on hover
+    pub fn hover_border_color(self: *Self, color: Hsla) *Self { 
+        self.hover_border_color_val = color; 
+        return self; 
     }
-
-    pub fn roundedB(self: *Self, radius: Pixels) *Self {
-        self.style.corner_radii.bottom_left = radius;
-        self.style.corner_radii.bottom_right = radius;
-        return self;
-    }
-
-    // ========================================================================
-    // Shadow
-    // ========================================================================
-
-    pub fn shadow(self: *Self, blur: Pixels, clr: Hsla) *Self {
-        self.style.box_shadow = .{
-            .blur_radius = blur,
-            .color = clr,
-        };
-        return self;
-    }
-
-    pub fn shadowSm(self: *Self) *Self {
-        return self.shadow(4, color_mod.black().withAlpha(0.1));
-    }
-
-    pub fn shadowMd(self: *Self) *Self {
-        return self.shadow(10, color_mod.black().withAlpha(0.15));
-    }
-
-    pub fn shadowLg(self: *Self) *Self {
-        return self.shadow(20, color_mod.black().withAlpha(0.2));
-    }
-
-    pub fn shadowXl(self: *Self) *Self {
-        return self.shadow(30, color_mod.black().withAlpha(0.25));
+    
+    /// Set text color on hover
+    pub fn hover_text_color(self: *Self, color: Hsla) *Self { 
+        self.hover_text_color_val = color; 
+        return self; 
     }
 
     // ========================================================================
     // Children
     // ========================================================================
 
-    pub fn child(self: *Self, elem: AnyElement) *Self {
-        self.children_list.append(self.allocator, elem) catch @panic("OOM");
-        return self;
-    }
-
-    pub fn children(self: *Self, elems: []const AnyElement) *Self {
-        for (elems) |elem| {
-            self.children_list.append(self.allocator, elem) catch @panic("OOM");
+    pub fn child(self: *Self, c: *Div) *Self {
+        if (self.child_count < MAX_CHILDREN) {
+            self.children[self.child_count] = c;
+            self.child_count += 1;
         }
         return self;
     }
 
-    // ========================================================================
-    // Events
-    // ========================================================================
-
-    pub fn onMouseDown(self: *Self, handler: MouseDownHandler) *Self {
-        self.on_mouse_down = handler;
+    /// Add text as a child (like GPUI's .child("text"))
+    pub fn child_text(self: *Self, text: []const u8) *Self {
+        self.text_content_val = text;
         return self;
     }
 
-    pub fn onMouseUp(self: *Self, handler: MouseUpHandler) *Self {
-        self.on_mouse_up = handler;
-        return self;
-    }
-
-    pub fn onClick(self: *Self, handler: ClickHandler) *Self {
-        self.on_click = handler;
-        return self;
-    }
-
-    pub fn onHover(self: *Self, handler: HoverHandler) *Self {
-        self.on_hover = handler;
-        return self;
-    }
-
-    pub fn cursor(self: *Self, c: Cursor) *Self {
-        self.cursor_style = c;
-        return self;
-    }
-
-    pub fn cursorPointer(self: *Self) *Self {
-        return self.cursor(.pointer);
-    }
-
     // ========================================================================
-    // Build
+    // Layout & Rendering
     // ========================================================================
 
-    pub fn build(self: *Self) AnyElement {
-        return intoAnyElement(Div, self);
-    }
-
-    // ========================================================================
-    // Element interface implementation
-    // ========================================================================
-
-    pub fn requestLayout(self: *Self, ctx: *RenderContext) LayoutId {
-        // Request layout for children first
-        self.child_layout_ids.clearRetainingCapacity();
-        for (self.children_list.items) |*child_elem| {
-            const child_id = child_elem.requestLayout(ctx);
-            self.child_layout_ids.append(self.allocator, child_id) catch @panic("OOM");
+    pub fn build(self: *Self, tree: *taffy.Taffy, rem_size: Pixels) !void {
+        for (self.children[0..self.child_count]) |maybe_child| {
+            if (maybe_child) |c| try c.build(tree, rem_size);
         }
-
-        // Create layout node for this div
-        const layout_style = LayoutStyle.fromStyle(self.style);
-        return ctx.layout_engine.createNode(layout_style, self.child_layout_ids.items) catch @panic("Layout error");
-    }
-
-    pub fn prepaint(self: *Self, bounds: Bounds(Pixels), ctx: *RenderContext) void {
-        // Register hitbox if we have event handlers
-        const has_handlers = self.on_mouse_down != null or self.on_mouse_up != null or
-            self.on_click != null or self.on_hover != null or
-            self.cursor_style != .default;
-
-        if (has_handlers) {
-            self.hitbox_id = ctx.registerHitbox(bounds, self.cursor_style);
-        }
-
-        // Prepaint children with their computed bounds
-        for (self.children_list.items, 0..) |*child_elem, i| {
-            if (i < self.child_layout_ids.items.len) {
-                const child_id = self.child_layout_ids.items[i];
-                const child_layout = ctx.layout_engine.getLayout(child_id);
-                const child_bounds = Bounds(Pixels).init(
-                    .{ .x = bounds.origin.x + child_layout.origin.x, .y = bounds.origin.y + child_layout.origin.y },
-                    child_layout.size,
-                );
-                child_elem.prepaint(child_bounds, ctx);
+        
+        var child_ids: [MAX_CHILDREN]taffy.NodeId = undefined;
+        var count: usize = 0;
+        for (self.children[0..self.child_count]) |maybe_child| {
+            if (maybe_child) |c| {
+                if (c.node_id) |nid| {
+                    child_ids[count] = nid;
+                    count += 1;
+                }
             }
         }
+        
+        const ts = self.style.toTaffy(rem_size);
+        self.node_id = if (count == 0)
+            try tree.newLeaf(ts)
+        else
+            try tree.newWithChildren(ts, child_ids[0..count]);
     }
 
-    pub fn paint(self: *Self, bounds: Bounds(Pixels), ctx: *RenderContext) void {
-        const s = &self.style;
+    pub fn paint(
+        self: *const Self,
+        scene: *Scene,
+        text_system: *TextSystem,
+        parent_x: Pixels,
+        parent_y: Pixels,
+        tree: *const taffy.Taffy,
+        hitbox_fn: ?*const fn (Bounds(Pixels), usize) void,
+        is_hovered_fn: ?*const fn (usize) bool,
+    ) void {
+        const nid = self.node_id orelse return;
+        const layout = tree.getLayout(nid);
+        
+        const x = parent_x + layout.location.x;
+        const y = parent_y + layout.location.y;
+        const lw = layout.size.width;
+        const lh = layout.size.height;
+        const bounds = Bounds(Pixels).fromXYWH(x, y, lw, lh);
 
-        // Paint shadow first (if any)
-        if (s.box_shadow) |box_shadow| {
-            ctx.scene.insertShadow(.{
+        if (self.hitbox_id) |hid| {
+            if (hitbox_fn) |f| f(bounds, hid);
+        }
+
+        // Check if this element is hovered
+        const hovered = if (self.hitbox_id) |hid| 
+            if (is_hovered_fn) |f| f(hid) else false
+        else false;
+
+        // Apply hover styles if hovered
+        var effective_style = self.style;
+        var effective_text_color = self.text_color_val;
+        
+        if (hovered) {
+            if (self.hover_bg_val) |hover_bg_color| {
+                effective_style.background = .{ .solid = hover_bg_color };
+            }
+            if (self.hover_border_color_val) |hover_bc| {
+                effective_style.border_color = hover_bc;
+            }
+            if (self.hover_text_color_val) |hover_tc| {
+                effective_text_color = hover_tc;
+            }
+        }
+
+        if (effective_style.background != null or effective_style.border_color != null) {
+            scene.insertQuad(.{
                 .bounds = bounds,
-                .corner_radii = s.corner_radii,
-                .blur_radius = box_shadow.blur_radius,
-                .color = box_shadow.color,
+                .background = effective_style.background,
+                .border_color = effective_style.border_color,
+                .border_widths = self.style.border_widths,
+                .corner_radii = self.style.corner_radii,
             }) catch {};
         }
 
-        // Paint background quad
-        const has_background = s.background != null;
-        const has_border = s.border_widths.top > 0 or s.border_widths.right > 0 or
-            s.border_widths.bottom > 0 or s.border_widths.left > 0;
-
-        if (has_background or has_border) {
-            ctx.scene.insertQuad(.{
-                .bounds = bounds,
-                .background = s.background,
-                .corner_radii = s.corner_radii,
-                .border_widths = s.border_widths,
-                .border_color = s.border_color,
-            }) catch {};
+        if (self.text_content_val) |t| {
+            const tw = @as(Pixels, @floatFromInt(t.len)) * self.text_size_val * 0.55;
+            const padding_l = self.style.padding.left.resolve(null, 16) orelse 0;
+            const padding_r = self.style.padding.right.resolve(null, 16) orelse 0;
+            const padding_t = self.style.padding.top.resolve(null, 16) orelse 0;
+            const padding_b = self.style.padding.bottom.resolve(null, 16) orelse 0;
+            const inner_w = lw - padding_l - padding_r;
+            const inner_h = lh - padding_t - padding_b;
+            
+            const tx = x + padding_l + switch (self.style.justify_content orelse .flex_start) {
+                .center, .space_between, .space_around, .space_evenly => (inner_w - tw) / 2,
+                .flex_end => inner_w - tw,
+                else => 0,
+            };
+            
+            const text_baseline_offset = self.text_size_val * 0.35;
+            const ty = y + padding_t + switch (self.style.align_items orelse .stretch) {
+                .center => inner_h / 2 + text_baseline_offset,
+                .flex_end => inner_h - self.text_size_val + text_baseline_offset,
+                .flex_start => self.text_size_val * 0.75,
+                else => inner_h / 2 + text_baseline_offset,
+            };
+            
+            text_system.renderText(scene, t, tx, ty, self.text_size_val, effective_text_color) catch {};
         }
 
-        // Paint children
-        for (self.children_list.items, 0..) |*child_elem, i| {
-            if (i < self.child_layout_ids.items.len) {
-                const child_id = self.child_layout_ids.items[i];
-                const child_layout = ctx.layout_engine.getLayout(child_id);
-                const child_bounds = Bounds(Pixels).init(
-                    .{ .x = bounds.origin.x + child_layout.origin.x, .y = bounds.origin.y + child_layout.origin.y },
-                    child_layout.size,
-                );
-                child_elem.paint(child_bounds, ctx);
+        for (self.children[0..self.child_count]) |maybe_child| {
+            if (maybe_child) |c| {
+                c.paint(scene, text_system, x, y, tree, hitbox_fn, is_hovered_fn);
             }
         }
     }
 };
 
-/// Helper function to create a div
-pub fn div(allocator: Allocator) *Div {
-    return Div.init(allocator);
-}
-
 // ============================================================================
-// Tests
+// Element Storage
 // ============================================================================
 
-test "Div fluent builder" {
-    const allocator = std.testing.allocator;
+const MAX_ELEMENTS = 512;
+var g_elements: [MAX_ELEMENTS]Div = undefined;
+var g_element_count: usize = 0;
 
-    const d = div(allocator)
-        .flex()
-        .flexCol()
-        .justifyCenter()
-        .itemsCenter()
-        .p4()
-        .gap2()
-        .bg(color_mod.rgb(0x4299e1))
-        .roundedLg()
-        .shadowMd();
-
-    defer d.deinit(allocator);
-
-    try std.testing.expectEqual(style_mod.Display.flex, d.style.display);
-    try std.testing.expectEqual(FlexDirection.column, d.style.flex_direction);
-    try std.testing.expectEqual(JustifyContent.center, d.style.justify_content.?);
-    try std.testing.expectEqual(AlignItems.center, d.style.align_items.?);
-    try std.testing.expectEqual(@as(Pixels, 8), d.style.corner_radii.top_left);
+/// Reset element storage (call at start of each frame)
+pub fn reset() void {
+    g_element_count = 0;
 }
 
-test "Div with children" {
-    const allocator = std.testing.allocator;
+/// Create a new div (matches GPUI's div() function)
+pub fn div() *Div {
+    if (g_element_count < MAX_ELEMENTS) {
+        g_elements[g_element_count] = .{};
+        const ptr = &g_elements[g_element_count];
+        g_element_count += 1;
+        return ptr;
+    }
+    return &g_elements[MAX_ELEMENTS - 1];
+}
 
-    const child1 = div(allocator).w(.{ .px = 50 }).h(.{ .px = 50 }).bg(color_mod.rgb(0xff0000));
-    const child2 = div(allocator).w(.{ .px = 50 }).h(.{ .px = 50 }).bg(color_mod.rgb(0x00ff00));
+/// Create a vertical flex container (matches GPUI's v_flex())
+pub fn v_flex() *Div {
+    return div().flex().flex_col();
+}
 
-    const parent = div(allocator)
-        .flex()
-        .flexRow()
-        .gap4()
-        .child(child1.build())
-        .child(child2.build());
-
-    defer parent.deinit(allocator);
-
-    try std.testing.expectEqual(@as(usize, 2), parent.children_list.items.len);
+/// Create a horizontal flex container (matches GPUI's h_flex())
+pub fn h_flex() *Div {
+    return div().flex().flex_row();
 }
