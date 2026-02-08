@@ -1,4 +1,4 @@
-.PHONY: help build test run run-release clean taffy-demo taffy-visual playground hello-world windows windows-release
+.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui
 
 # Default target
 all: help
@@ -27,13 +27,13 @@ run-release:
 run-args:
 	zig build run -- $(ARGS)
 
-# Run Taffy console demo (prints layout tree)
-taffy-demo:
-	zig build taffy-demo
+# Run Zaffy console demo (prints layout tree)
+zaffy-demo:
+	zig build zaffy-demo
 
-# Run Taffy visual demo (renders dashboard layout)
-taffy-visual:
-	zig build taffy-visual
+# Run Zaffy visual demo (renders dashboard layout)
+zaffy-visual:
+	zig build zaffy-visual
 
 # Run Hello World example (GPUI port)
 hello-world:
@@ -73,19 +73,37 @@ watch-test:
 watch-run:
 	find src playground -name '*.zig' | entr -c zig build run
 
+# List GPUI examples
+list-gpui:
+	@/usr/bin/python3 tools/port_gpui_example.py --list
+
+# Port a GPUI example (usage: make port-gpui EXAMPLE=hello_world)
+port-gpui:
+	@/usr/bin/python3 tools/port_gpui_example.py $(EXAMPLE)
+
 # Show help
 help:
 	@echo "zapui Makefile targets:"
+	@echo ""
+	@echo "Build & Run:"
 	@echo "  make build          - Build the library"
 	@echo "  make test           - Run unit tests"
 	@echo "  make run            - Run the Div API playground"
 	@echo "  make playground     - Alias for 'make run'"
 	@echo "  make run-release    - Run playground (release build)"
 	@echo "  make hello-world    - Run Hello World example (GPUI port)"
-	@echo "  make taffy-demo     - Run Taffy console demo"
-	@echo "  make taffy-visual   - Run Taffy visual demo"
+	@echo "  make zaffy-demo     - Run Zaffy console demo"
+	@echo "  make zaffy-visual   - Run Zaffy visual demo"
+	@echo ""
+	@echo "Cross-compilation:"
 	@echo "  make windows        - Cross-compile all examples for Windows"
 	@echo "  make windows-release- Cross-compile for Windows (release)"
+	@echo ""
+	@echo "GPUI Porting Tools:"
+	@echo "  make list-gpui      - List available GPUI examples"
+	@echo "  make port-gpui EXAMPLE=<name> - Generate Zig skeleton from GPUI example"
+	@echo ""
+	@echo "Utilities:"
 	@echo "  make clean          - Remove build artifacts"
 	@echo "  make watch-test     - Watch files and run tests on change"
 	@echo "  make watch-run      - Watch files and run playground on change"
