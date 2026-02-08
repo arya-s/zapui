@@ -14,52 +14,43 @@ When porting a GPUI example to ZapUI, follow these steps:
 make port-gpui EXAMPLE=<name>
 ```
 This creates:
-- `examples/gpui_ports/<name>/<name>.zig` - Skeleton to fill in
+- `examples/gpui_ports/<name>/<name>.zig` - D3D11 skeleton
 - `examples/gpui_ports/<name>/<name>.rs` - Original Rust source
 - `examples/gpui_ports/<name>/REPORT.md` - Comparison report
+- `examples/gpui_ports/<name>/LiberationSans-Regular.ttf` - Embedded font
 - `examples/gpui_ports/<name>/screenshots/` - For visual comparison
 
-### 2. Implement the Port
-Edit `examples/gpui_ports/<name>/<name>.zig`:
-- Fix the auto-generated skeleton (it's a rough translation)
-- Key differences from Rust:
-  - Text children need wrapper: `.child(div().child_text("text"))` not `.child("text")`
-  - Format strings: use `std.fmt.bufPrint` not `format!()`
-  - Colors: use `zapui.rgb(0x...)` or `zapui.hsla(...)`
-  - GPUI's `green()` is `zapui.hsla(0.333, 1.0, 0.25, 1.0)`
+### 2. Add Build Target
+Add to `build.zig` - copy the hello_world pattern:
+```zig
+const <name>_mod = b.createModule(.{
+    .root_source_file = b.path("examples/gpui_ports/<name>/<name>.zig"),
+    .target = target,
+    .optimize = optimize,
+});
+<name>_mod.addImport("zapui", zapui_mod);
+<name>_mod.addImport("freetype", freetype_dep.module("freetype"));
+// ... see hello_world for full pattern
+```
 
-### 3. Add Build Target (if not auto-added)
-Add to `build.zig` if needed - check existing hello_world example for pattern.
+### 3. Implement the Port
+The generated skeleton has the boilerplate. Fill in the rendering:
+- Use `renderer.drawQuads()` for rectangles/boxes
+- Use `renderer.drawSprites()` for text (after rasterizing with FreeType)
+- See `examples/gpui_ports/hello_world/hello_world.zig` for complete example
 
-### 4. Build for Windows
+### 4. Build and Capture
 ```bash
 make windows
-```
-
-### 5. Capture Screenshots
-```bash
-# Capture ZapUI (OpenGL) screenshot
 make capture EXAMPLE=<name>
-
-# Capture GPUI (Rust) screenshot (requires Zed repo at C:\src\zed)
 make capture-gpui EXAMPLE=<name>
-
-# Or capture both
-make capture-both EXAMPLE=<name>
-```
-
-### 6. Generate Comparison
-```bash
 make compare EXAMPLE=<name>
 ```
-This creates:
-- `screenshots/diff.png` - Pixel differences (red = different)
-- `screenshots/toggle.gif` - Animated toggle between both
 
-### 7. Review and Iterate
-- Check `REPORT.md` for side-by-side API comparison
-- Look at `diff.png` to identify visual differences
-- Iterate until the output matches GPUI closely
+### 5. Review
+- Check `screenshots/diff.png` for pixel differences
+- Check `screenshots/toggle.gif` for animated comparison
+- Iterate until output matches GPUI
 
 ## File Structure for Ported Examples
 

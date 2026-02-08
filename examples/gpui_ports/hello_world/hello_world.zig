@@ -1,7 +1,7 @@
-//! Hello World - Native Win32 + DirectX 11 version
+//! Hello World - Port of GPUI's hello_world.rs example
 //!
-//! This is the same hello_world example but using native Win32 windowing
-//! and D3D11 rendering instead of GLFW + OpenGL.
+//! Win32 + D3D11 implementation.
+//! See hello_world.rs for original GPUI source.
 
 const std = @import("std");
 const zapui = @import("zapui");
@@ -27,7 +27,6 @@ const font_data = @embedFile("LiberationSans-Regular.ttf");
 // ============================================================================
 
 const bg_color = [4]f32{ 0.314, 0.314, 0.314, 1.0 }; // rgb(0x505050)
-const border_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 }; // blue
 const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
 const green_color = [4]f32{ 0.0, 0.5, 0.0, 1.0 }; // GPUI's green
 const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
@@ -35,17 +34,20 @@ const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
 const black_color = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
 const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 
+// ============================================================================
+// Main
+// ============================================================================
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    // Initialize FreeType
+    // Initialize FreeType for text rendering
     const ft_lib = freetype.Library.init() catch {
         std.debug.print("Failed to initialize FreeType\n", .{});
         return error.FreeTypeInitFailed;
     };
     defer ft_lib.deinit();
 
-    // Load font
     const face = ft_lib.initMemoryFace(font_data, 0) catch {
         std.debug.print("Failed to load font\n", .{});
         return error.FontLoadFailed;
@@ -209,7 +211,6 @@ pub fn main() !void {
         renderer.clear(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
 
         // Layout calculations matching GPUI:
-        // - Root div is 500x500, fills window
         // - gap_3 = 12px between text and boxes
         // - size_8 = 32px boxes, gap_2 = 8px between boxes
         const box_size: f32 = 32;
@@ -250,7 +251,7 @@ pub fn main() !void {
         }
 
         const text_x = (500 - text_width) / 2;
-        const baseline_y = content_start_y + 16; // baseline offset
+        const baseline_y = content_start_y + 16;
 
         var sprites: [text.len]SpriteInstance = undefined;
         var cursor_x = text_x;

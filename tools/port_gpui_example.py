@@ -9,7 +9,7 @@ Usage:
 
 This tool:
 1. Downloads the GPUI example source
-2. Generates a Zig translation skeleton
+2. Generates a Zig translation skeleton (Win32 + D3D11)
 3. Highlights areas needing manual translation
 """
 
@@ -17,68 +17,17 @@ import sys
 import re
 import urllib.request
 import json
+import os
+import shutil
 
 GPUI_EXAMPLES_URL = "https://raw.githubusercontent.com/zed-industries/zed/main/crates/gpui/examples"
 GPUI_API_URL = "https://api.github.com/repos/zed-industries/zed/contents/crates/gpui/examples"
-
-# Translation patterns from Rust to Zig
-TRANSLATIONS = {
-    # Method calls
-    r'\.flex\(\)': '.flex()',
-    r'\.flex_col\(\)': '.flex_col()',
-    r'\.flex_row\(\)': '.flex_row()',
-    r'\.gap_(\d+)\(\)': r'.gap_\1()',
-    r'\.gap\(px\(([^)]+)\)\)': r'.gap(px(\1))',
-    r'\.bg\(rgb\(0x([0-9a-fA-F]+)\)\)': r'.bg(zapui.rgb(0x\1))',
-    r'\.bg\(gpui::(\w+)\(\)\)': r'.bg(\1)',
-    r'\.size\(px\(([^)]+)\)\)': r'.size(px(\1))',
-    r'\.size_(\d+)\(\)': r'.size_\1()',
-    r'\.w\(px\(([^)]+)\)\)': r'.w(px(\1))',
-    r'\.h\(px\(([^)]+)\)\)': r'.h(px(\1))',
-    r'\.w_full\(\)': '.w_full()',
-    r'\.h_full\(\)': '.h_full()',
-    r'\.justify_center\(\)': '.justify_center()',
-    r'\.items_center\(\)': '.items_center()',
-    r'\.shadow_lg\(\)': '.shadow_lg()',
-    r'\.shadow_md\(\)': '.shadow_md()',
-    r'\.shadow_sm\(\)': '.shadow_sm()',
-    r'\.border_(\d+)\(\)': r'.border_\1()',
-    r'\.border_color\(rgb\(0x([0-9a-fA-F]+)\)\)': r'.border_color(zapui.rgb(0x\1))',
-    r'\.border_color\(gpui::(\w+)\(\)\)': r'.border_color(\1)',
-    r'\.border_dashed\(\)': '.border_dashed()',
-    r'\.rounded_md\(\)': '.rounded_md()',
-    r'\.rounded_lg\(\)': '.rounded_lg()',
-    r'\.rounded_full\(\)': '.rounded_full()',
-    r'\.rounded\(px\(([^)]+)\)\)': r'.rounded(px(\1))',
-    r'\.text_xl\(\)': '.text_xl()',
-    r'\.text_lg\(\)': '.text_lg()',
-    r'\.text_sm\(\)': '.text_sm()',
-    r'\.text_color\(rgb\(0x([0-9a-fA-F]+)\)\)': r'.text_color(zapui.rgb(0x\1))',
-    r'\.text_color\(gpui::(\w+)\(\)\)': r'.text_color(\1)',
-    r'\.p_(\d+)\(\)': r'.p_\1()',
-    r'\.px_(\d+)\(\)': r'.px_\1()',
-    r'\.py_(\d+)\(\)': r'.py_\1()',
-    r'\.m_(\d+)\(\)': r'.m_\1()',
-    r'\.overflow_hidden\(\)': '.overflow_hidden()',
-    
-    # GPUI colors to constants
-    r'gpui::red\(\)': 'red',
-    r'gpui::green\(\)': 'green', 
-    r'gpui::blue\(\)': 'blue',
-    r'gpui::yellow\(\)': 'yellow',
-    r'gpui::black\(\)': 'black',
-    r'gpui::white\(\)': 'white',
-    
-    # div() calls
-    r'\bdiv\(\)': 'div()',
-}
 
 # Features that need manual attention
 UNSUPPORTED_FEATURES = [
     (r'\.on_click\(', 'Event handlers need manual implementation'),
     (r'\.on_mouse_', 'Mouse events need manual implementation'),
     (r'\.child\([^)]*format!', 'Format strings: use std.fmt.bufPrint'),
-    (r'\.child\("([^"]+)"\)', 'String children: wrap with div().child_text()'),
     (r'impl Render', 'Render trait: convert to render function'),
     (r'cx\.new\(', 'Context/state: needs manual conversion'),
     (r'\.when\(', 'Conditional rendering: use if/else'),
@@ -123,21 +72,15 @@ def analyze_example(rust_code: str) -> dict:
     """Analyze Rust code for translation complexity"""
     analysis = {
         'warnings': [],
-        'div_chains': [],
         'colors': set(),
-        'features_used': set(),
+        'window_size': (500, 500),  # Default
+        'title': 'ZapUI',
     }
     
     # Find unsupported features
     for pattern, message in UNSUPPORTED_FEATURES:
         if re.search(pattern, rust_code):
             analysis['warnings'].append(message)
-            analysis['features_used'].add(pattern)
-    
-    # Extract div() chains
-    div_pattern = r'div\(\)[^;{]+(?=[\s;{])'
-    for match in re.finditer(div_pattern, rust_code, re.DOTALL):
-        analysis['div_chains'].append(match.group(0))
     
     # Extract colors
     color_pattern = r'rgb\(0x([0-9a-fA-F]+)\)'
@@ -146,41 +89,28 @@ def analyze_example(rust_code: str) -> dict:
     
     gpui_colors = r'gpui::(\w+)\(\)'
     for match in re.finditer(gpui_colors, rust_code):
-        analysis['colors'].add(match.group(1))
+        color = match.group(1)
+        if color in ['red', 'green', 'blue', 'yellow', 'black', 'white']:
+            analysis['colors'].add(color)
+    
+    # Try to extract window size from Rust code
+    size_match = re.search(r'size\(px\((\d+\.?\d*).*?px\((\d+\.?\d*)\)', rust_code)
+    if size_match:
+        analysis['window_size'] = (int(float(size_match.group(1))), int(float(size_match.group(2))))
     
     return analysis
 
 
-def translate_div_chain(rust_chain: str) -> str:
-    """Translate a Rust div() chain to Zig"""
-    zig_chain = rust_chain
-    
-    for pattern, replacement in TRANSLATIONS.items():
-        zig_chain = re.sub(pattern, replacement, zig_chain)
-    
-    # Handle .child() calls - these need special attention
-    # Simple string children need wrapping
-    zig_chain = re.sub(
-        r'\.child\("([^"]+)"\)',
-        r'.child(div().child_text("\1"))',
-        zig_chain
-    )
-    
-    return zig_chain
-
-
-def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysis: dict) -> str:
-    """Generate a side-by-side comparison report"""
-    
-    # Extract the main render function from Rust
-    render_match = re.search(r'fn render\([^)]*\)[^{]*\{(.*?)\n    \}', rust_code, re.DOTALL)
-    rust_render = render_match.group(1).strip() if render_match else "// Could not extract render function"
-    
-    # Simplify for display - get just the div chain
-    div_match = re.search(r'(div\(\)[^;]+)', rust_render, re.DOTALL)
-    rust_div_chain = div_match.group(1).strip() if div_match else rust_render[:500]
+def generate_comparison_report(name: str, rust_code: str, analysis: dict) -> str:
+    """Generate a comparison report"""
     
     warnings_list = '\n'.join(f'- {w}' for w in set(analysis['warnings'])) if analysis['warnings'] else 'None - straightforward port!'
+    
+    # Extract the main div chain from Rust for display
+    render_match = re.search(r'fn render\([^)]*\)[^{]*\{(.*?)\n    \}', rust_code, re.DOTALL)
+    rust_render = render_match.group(1).strip() if render_match else ""
+    div_match = re.search(r'(div\(\)[^;]+)', rust_render, re.DOTALL)
+    rust_div_chain = div_match.group(1).strip()[:1500] if div_match else "// Could not extract"
     
     return f'''# {name.replace('_', ' ').title()} - Comparison Report
 
@@ -190,7 +120,6 @@ def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysi
 |--------|-------|
 | Example | `{name}` |
 | Rust LOC | {len(rust_code.splitlines())} |
-| Div chains found | {len(analysis['div_chains'])} |
 | Colors used | {len(analysis['colors'])} |
 | Warnings | {len(analysis['warnings'])} |
 
@@ -198,60 +127,13 @@ def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysi
 
 {warnings_list}
 
-## Side-by-Side API Comparison
-
-### Rust (GPUI)
+## Rust (GPUI) Source
 
 ```rust
-{rust_div_chain[:1500]}
+{rust_div_chain}
 ```
-
-### Zig (ZapUI)
-
-```zig
-// See {name}.zig for full implementation
-// Key differences:
-// - Text children: .child("text") → .child(div().child_text("text"))
-// - Format strings: format!() → std.fmt.bufPrint()
-// - Colors: gpui::red() → red (const)
-// - Method chains are nearly identical
-```
-
-## API Mapping
-
-| GPUI (Rust) | ZapUI (Zig) | Status |
-|-------------|-------------|--------|
-| `div()` | `div()` | ✅ |
-| `.flex()` | `.flex()` | ✅ |
-| `.flex_col()` | `.flex_col()` | ✅ |
-| `.flex_row()` | `.flex_row()` | ✅ |
-| `.gap_N()` | `.gap_N()` | ✅ |
-| `.bg(rgb(0x...))` | `.bg(zapui.rgb(0x...))` | ✅ |
-| `.bg(gpui::red())` | `.bg(red)` | ✅ |
-| `.size(px(N))` | `.size(px(N))` | ✅ |
-| `.size_N()` | `.size_N()` | ✅ |
-| `.w(px(N))` | `.w(px(N))` | ✅ |
-| `.h(px(N))` | `.h(px(N))` | ✅ |
-| `.justify_center()` | `.justify_center()` | ✅ |
-| `.items_center()` | `.items_center()` | ✅ |
-| `.border_N()` | `.border_N()` | ✅ |
-| `.border_color(...)` | `.border_color(...)` | ✅ |
-| `.border_dashed()` | `.border_dashed()` | ✅ |
-| `.rounded_md()` | `.rounded_md()` | ✅ |
-| `.shadow_lg()` | `.shadow_lg()` | ✅ |
-| `.text_xl()` | `.text_xl()` | ✅ |
-| `.text_color(...)` | `.text_color(...)` | ✅ |
-| `.child("text")` | `.child(div().child_text("text"))` | ⚠️ Wrapper needed |
-| `.child(element)` | `.child(element)` | ✅ |
-| `.on_click(...)` | *not yet* | ❌ |
-| `.opacity(N)` | *not yet* | ❌ |
-| `canvas(...)` | *not yet* | ❌ |
-| `img(...)` | *not yet* | ❌ |
-| `svg(...)` | *not yet* | ❌ |
 
 ## Screenshots
-
-*Run `make capture-both EXAMPLE={name}` then `make compare EXAMPLE={name}` to generate screenshots.*
 
 ### GPUI (Rust)
 
@@ -269,81 +151,87 @@ def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysi
 
 ![Diff](screenshots/diff.png)
 
-## Build Instructions
-
-### ZapUI (Zig)
+## Build & Capture
 
 ```bash
-# From zapui root directory
-zig build {name}
-./zig-out/bin/{name}
-```
+# Build
+make windows
 
-### GPUI (Rust)
+# Capture both screenshots
+make capture-both EXAMPLE={name}
 
-```bash
-# From zed repository
-cargo run --example {name} -p gpui
+# Generate comparison
+make compare EXAMPLE={name}
 ```
 
 ## Links
 
 - [Original GPUI source](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs)
-- [ZapUI Documentation](../../README.md)
 '''
 
 
 def generate_zig_skeleton(name: str, rust_code: str, analysis: dict) -> str:
-    """Generate a Zig skeleton from analyzed Rust code"""
+    """Generate a D3D11 Zig skeleton"""
     
-    # Extract colors used
+    width, height = analysis['window_size']
+    title = name.replace('_', ' ').title()
+    
+    # Generate color definitions
     color_defs = []
     for color in sorted(analysis['colors']):
-        if color in ['red', 'green', 'blue', 'yellow', 'black', 'white']:
-            if color == 'green':
-                color_defs.append(f"const {color} = zapui.hsla(0.333, 1.0, 0.25, 1.0);  // GPUI's {color}()")
-            else:
-                color_defs.append(f"const {color} = zapui.{color}();")
+        if color == 'red':
+            color_defs.append("const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };")
+        elif color == 'green':
+            color_defs.append("const green_color = [4]f32{ 0.0, 0.5, 0.0, 1.0 }; // GPUI's green")
+        elif color == 'blue':
+            color_defs.append("const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };")
+        elif color == 'yellow':
+            color_defs.append("const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };")
+        elif color == 'black':
+            color_defs.append("const black_color = [4]f32{ 0.0, 0.0, 0.0, 1.0 };")
+        elif color == 'white':
+            color_defs.append("const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };")
         else:
-            color_defs.append(f"const color_{color} = zapui.rgb(0x{color});")
+            # Convert hex to float
+            try:
+                r = int(color[0:2], 16) / 255.0
+                g = int(color[2:4], 16) / 255.0
+                b = int(color[4:6], 16) / 255.0
+                color_defs.append(f"const color_{color} = [4]f32{{ {r:.3f}, {g:.3f}, {b:.3f}, 1.0 }};")
+            except:
+                color_defs.append(f"// const color_{color} = ... // TODO: parse this color")
     
     colors_section = '\n'.join(color_defs) if color_defs else "// No colors extracted"
     
-    # Translate div chains
-    translated_chains = []
-    for chain in analysis['div_chains'][:5]:  # Limit to first 5 for skeleton
-        translated = translate_div_chain(chain)
-        translated_chains.append(f"    // Translated from Rust:\n    // {chain[:80]}...\n    const elem = {translated};")
-    
-    chains_section = '\n\n'.join(translated_chains) if translated_chains else "    // No div chains extracted"
-    
     # Warnings section
     if analysis['warnings']:
-        warnings = '\n'.join(f"//   - {w}" for w in set(analysis['warnings']))
+        warnings = '\n'.join(f'//   - {w}' for w in set(analysis['warnings']))
     else:
         warnings = "//   None - this example should be straightforward to port!"
     
-    return f'''//! {name.replace('_', ' ').title()} - Port of GPUI's {name}.rs example
+    return f'''//! {title} - Port of GPUI's {name}.rs example
 //!
-//! Auto-generated skeleton by port_gpui_example.py
-//! Manual adjustments needed - see warnings below.
+//! Win32 + D3D11 implementation.
+//! See {name}.rs for original GPUI source.
 
 const std = @import("std");
 const zapui = @import("zapui");
-const zglfw = @import("zglfw");
+const freetype = @import("freetype");
 
-const GlRenderer = zapui.GlRenderer;
-const TextSystem = zapui.TextSystem;
-const Scene = zapui.Scene;
-const zaffy = zapui.zaffy;
-const Pixels = zapui.Pixels;
+const d3d11 = zapui.renderer.d3d11_renderer.d3d11;
+const S_OK = zapui.renderer.d3d11_renderer.S_OK;
 
-// GPUI-style API
-const div = zapui.elements.div.div;
-const v_flex = zapui.elements.div.v_flex;
-const h_flex = zapui.elements.div.h_flex;
-const reset = zapui.elements.div.reset;
-const px = zapui.elements.div.px;
+const win32_platform = zapui.platform.Win32Backend;
+const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
+const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
+const SpriteInstance = zapui.renderer.d3d11_renderer.SpriteInstance;
+
+fn release(comptime T: type, obj: *T) void {{
+    _ = obj.IUnknown.vtable.Release(&obj.IUnknown);
+}}
+
+// Embedded font
+const font_data = @embedFile("LiberationSans-Regular.ttf");
 
 // ============================================================================
 // Colors extracted from GPUI example
@@ -357,87 +245,84 @@ const px = zapui.elements.div.px;
 {warnings}
 
 // ============================================================================
-// Render Function
-// ============================================================================
-
-fn render(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem) !void {{
-    reset();
-    const rem: Pixels = 16.0;
-
-    // TODO: Translate the render logic from Rust
-    // Original div chains (auto-translated, may need fixes):
-    
-{chains_section}
-
-    // Build and paint
-    // try root.buildWithTextSystem(tree, rem, text_system);
-    // tree.computeLayoutWithSize(root.node_id.?, WIDTH, HEIGHT);
-    // root.paint(scene, text_system, 0, 0, tree, null, null);
-}}
-
-// ============================================================================
 // Main
 // ============================================================================
 
-const WIDTH: f32 = 800;
-const HEIGHT: f32 = 600;
-
 pub fn main() !void {{
-    zglfw.init() catch return;
-    defer zglfw.terminate();
+    const allocator = std.heap.page_allocator;
 
-    zglfw.windowHint(.context_version_major, 3);
-    zglfw.windowHint(.context_version_minor, 3);
-    zglfw.windowHint(.opengl_profile, .opengl_core_profile);
+    // Initialize FreeType for text rendering
+    const ft_lib = freetype.Library.init() catch {{
+        std.debug.print("Failed to initialize FreeType\\n", .{{}});
+        return error.FreeTypeInitFailed;
+    }};
+    defer ft_lib.deinit();
 
-    const window = zglfw.Window.create(@intFromFloat(WIDTH), @intFromFloat(HEIGHT), "{name.replace('_', ' ').title()} - ZapUI", null, null) catch return;
+    const face = ft_lib.initMemoryFace(font_data, 0) catch {{
+        std.debug.print("Failed to load font\\n", .{{}});
+        return error.FontLoadFailed;
+    }};
+    defer face.deinit();
+
+    face.setPixelSizes(0, 20) catch {{
+        std.debug.print("Failed to set font size\\n", .{{}});
+        return error.FontSizeFailed;
+    }};
+
+    // Initialize Win32 platform
+    var plat = try win32_platform.init();
+    defer plat.deinit();
+
+    // Create window (size from GPUI example)
+    const window = try win32_platform.createWindow(&plat, .{{
+        .width = {width},
+        .height = {height},
+        .title = "{title} - ZapUI (Win32 + D3D11)",
+    }});
     defer window.destroy();
 
-    zglfw.makeContextCurrent(window);
-    zglfw.swapInterval(1);
+    std.debug.print("{title} - ZapUI (Win32 + D3D11)\\n", .{{}});
+    std.debug.print("Press ESC to exit\\n", .{{}});
 
-    zapui.renderer.gl.loadGlFunctions(zglfw.getProcAddress) catch return;
-
-    const allocator = std.heap.page_allocator;
-    var renderer = try GlRenderer.init(allocator);
+    // Initialize D3D11 renderer
+    var renderer = D3D11Renderer.init(allocator, window.hwnd.?, {width}, {height}) catch |err| {{
+        std.debug.print("Failed to initialize D3D11: {{}}\\n", .{{err}});
+        return err;
+    }};
     defer renderer.deinit();
 
-    var text_system = TextSystem.init(allocator) catch return;
-    defer text_system.deinit();
-    _ = text_system.loadFontFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") catch return;
-    text_system.setAtlas(renderer.getGlyphAtlas());
-    text_system.setColorAtlas(renderer.getColorAtlas());
+    // TODO: Create glyph atlas for text rendering (see hello_world.zig for example)
 
+    // Main loop
     while (!window.shouldClose()) {{
-        zglfw.pollEvents();
-        if (window.getKey(.escape) == .press) break;
+        const events = window.pollEvents();
 
-        const fb_size = window.getFramebufferSize();
-        renderer.setViewport(@floatFromInt(fb_size[0]), @floatFromInt(fb_size[1]), 1.0);
-        renderer.clear(zapui.rgb(0x1a1a1a));
+        for (events) |event| {{
+            switch (event) {{
+                .key => |k| {{
+                    if (k.key == .escape and k.action == .press) {{
+                        return;
+                    }}
+                }},
+                .resize => |r| {{
+                    renderer.resize(r.width, r.height) catch {{}};
+                }},
+                else => {{}},
+            }}
+        }}
 
-        var scene = Scene.init(allocator);
-        defer scene.deinit();
+        // Render frame
+        renderer.beginFrame();
+        renderer.clear(0.314, 0.314, 0.314, 1.0); // bg color 0x505050
 
-        var tree = zaffy.Zaffy.init(allocator);
-        defer tree.deinit();
+        // TODO: Implement rendering
+        // Use renderer.drawQuads() for rectangles
+        // Use renderer.drawSprites() for text
+        // See hello_world.zig for complete example
 
-        render(&tree, &scene, &text_system) catch |err| {{
-            std.debug.print("Render error: {{}}\\n", .{{err}});
-        }};
-
-        renderer.drawScene(&scene) catch {{}};
-        window.swapBuffers();
+        renderer.present(true);
     }}
 }}
-
-// ============================================================================
-// Original Rust Source (for reference)
-// ============================================================================
-//
-// View the original at:
-// https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs
-//
 '''
 
 
@@ -463,8 +348,8 @@ def main():
     analysis = analyze_example(rust_code)
     
     print(f"\nAnalysis:")
-    print(f"  - Div chains found: {len(analysis['div_chains'])}")
     print(f"  - Colors used: {len(analysis['colors'])}")
+    print(f"  - Window size: {analysis['window_size']}")
     print(f"  - Warnings: {len(analysis['warnings'])}")
     
     if analysis['warnings']:
@@ -476,12 +361,12 @@ def main():
     
     # Create example directory structure
     example_dir = f"examples/gpui_ports/{name}"
-    import os
     os.makedirs(example_dir, exist_ok=True)
+    os.makedirs(f"{example_dir}/screenshots", exist_ok=True)
     
+    # Write Zig skeleton
     output_file = f"{example_dir}/{name}.zig"
     print(f"\nGenerating: {output_file}")
-    
     with open(output_file, 'w') as f:
         f.write(zig_code)
     
@@ -491,25 +376,34 @@ def main():
         f.write(rust_code)
     
     # Generate comparison report
-    report = generate_comparison_report(name, rust_code, zig_code, analysis)
+    report = generate_comparison_report(name, rust_code, analysis)
     report_file = f"{example_dir}/REPORT.md"
     with open(report_file, 'w') as f:
         f.write(report)
     
-    # Create screenshots directory
-    os.makedirs(f"{example_dir}/screenshots", exist_ok=True)
+    # Copy font file
+    font_src = "assets/fonts/LiberationSans-Regular.ttf"
+    font_dst = f"{example_dir}/LiberationSans-Regular.ttf"
+    if os.path.exists(font_src):
+        shutil.copy(font_src, font_dst)
+        print(f"   Copied font: {font_dst}")
+    else:
+        print(f"   ⚠️  Font not found: {font_src}")
+        print(f"   Copy LiberationSans-Regular.ttf to {example_dir}/")
     
     print(f"\n✅ Generated example in {example_dir}/")
-    print(f"   - {name}.zig (ZapUI port skeleton)")
+    print(f"   - {name}.zig (D3D11 skeleton)")
     print(f"   - {name}.rs (original Rust source)")
-    print(f"   - REPORT.md (side-by-side comparison)")
+    print(f"   - REPORT.md (comparison report)")
+    print(f"   - LiberationSans-Regular.ttf (embedded font)")
     print(f"   - screenshots/ (for visual comparisons)")
     print(f"\n   Next steps:")
-    print(f"   1. Edit {output_file}")
-    print(f"   2. Add build target to build.zig")
-    print(f"   3. Run: zig build {name}")
-    print(f"   4. Compare: ./tools/compare_screenshots.sh {name}")
-    print(f"\n   View original: https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs")
+    print(f"   1. Add build target to build.zig (copy from hello_world)")
+    print(f"   2. Implement rendering in {name}.zig")
+    print(f"   3. make windows")
+    print(f"   4. make capture-both EXAMPLE={name}")
+    print(f"   5. make compare EXAMPLE={name}")
+    print(f"\n   Reference: examples/gpui_ports/hello_world/hello_world.zig")
 
 
 if __name__ == '__main__':
