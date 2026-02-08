@@ -133,7 +133,7 @@ pub fn build(b: *std.Build) void {
 
     // Hello World example (GPUI port)
     const hello_world_mod = b.createModule(.{
-        .root_source_file = b.path("playground/hello_world.zig"),
+        .root_source_file = b.path("examples/gpui_ports/hello_world/hello_world.zig"),
         .target = target,
         .optimize = optimize,
     });
