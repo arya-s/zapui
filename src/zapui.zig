@@ -25,6 +25,7 @@ pub const element = @import("element.zig");
 pub const input = @import("input.zig");
 pub const ui = @import("ui.zig");
 pub const text_system = @import("text_system.zig");
+pub const glyph_cache = @import("glyph_cache.zig");
 pub const elements = @import("elements.zig");
 pub const view = @import("view.zig");
 pub const zaffy = @import("zaffy.zig");

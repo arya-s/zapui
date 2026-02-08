@@ -1,86 +1,90 @@
 //! D3D11 Text Renderer
 //!
-//! Text rendering using FreeType for glyph rasterization and D3D11 for display.
-//! Caches glyphs in a texture atlas for efficient rendering.
-//!
-//! Can be used standalone or integrated with TextSystem for scene-based rendering.
+//! Text rendering using shared GlyphCache for rasterization and D3D11 for display.
+//! Uploads glyphs to a D3D11 texture atlas on demand.
 
 const std = @import("std");
-const freetype = @import("freetype");
 const d3d11_renderer = @import("d3d11_renderer.zig");
+const glyph_cache_mod = @import("../glyph_cache.zig");
 const geometry = @import("../geometry.zig");
 
 const d3d11 = d3d11_renderer.d3d11;
 const D3D11Renderer = d3d11_renderer.D3D11Renderer;
 const SpriteInstance = d3d11_renderer.SpriteInstance;
+const GlyphCache = glyph_cache_mod.GlyphCache;
+const FontId = glyph_cache_mod.FontId;
 const Bounds = geometry.Bounds;
+const Pixels = geometry.Pixels;
 
 pub const D3D11TextRenderer = struct {
     allocator: std.mem.Allocator,
-    ft_lib: freetype.Library,
-    face: freetype.Face,
+    glyph_cache: *GlyphCache,
     device: *d3d11.ID3D11Device,
-    
-    // Glyph cache
-    glyphs: [128]Glyph,
+    font_id: FontId,
+    font_size: Pixels,
+
+    // Atlas
     atlas_texture: ?*d3d11.ID3D11Texture2D,
     atlas_srv: ?*d3d11.ID3D11ShaderResourceView,
-    atlas_size: u32,
     atlas_data: []u8,
+    atlas_size: u32,
     next_x: u32,
     next_y: u32,
     row_height: u32,
+    dirty: bool,
 
-    pub const Glyph = struct {
-        x: u32 = 0,      // Atlas x position (pixels)
-        y: u32 = 0,      // Atlas y position (pixels)  
-        w: u32 = 0,      // Width (pixels)
-        h: u32 = 0,      // Height (pixels)
-        bearing_x: i32 = 0,
-        bearing_y: i32 = 0,
-        advance: i32 = 0,
-        cached: bool = false,
-    };
+    // Track which ASCII chars are uploaded
+    ascii_uploaded: [128]bool,
 
-    pub fn init(allocator: std.mem.Allocator, renderer: *D3D11Renderer, font_data: []const u8, font_size: u32) !D3D11TextRenderer {
-        // Initialize FreeType
-        const ft_lib = freetype.Library.init() catch return error.FreeTypeInitFailed;
-        errdefer ft_lib.deinit();
-
-        const face = ft_lib.initMemoryFace(font_data, 0) catch return error.FontLoadFailed;
-        errdefer face.deinit();
-
-        face.setPixelSizes(0, font_size) catch return error.FontSizeFailed;
-
-        // Allocate atlas
+    pub fn init(
+        allocator: std.mem.Allocator,
+        renderer: *D3D11Renderer,
+        glyph_cache: *GlyphCache,
+        font_id: FontId,
+        font_size: u32,
+    ) !D3D11TextRenderer {
         const atlas_size: u32 = 512;
         const atlas_data = try allocator.alloc(u8, atlas_size * atlas_size);
         @memset(atlas_data, 0);
 
         var self = D3D11TextRenderer{
             .allocator = allocator,
-            .ft_lib = ft_lib,
-            .face = face,
+            .glyph_cache = glyph_cache,
             .device = renderer.device,
-            .glyphs = [_]Glyph{.{}} ** 128,
+            .font_id = font_id,
+            .font_size = @floatFromInt(font_size),
             .atlas_texture = null,
             .atlas_srv = null,
-            .atlas_size = atlas_size,
             .atlas_data = atlas_data,
-            .next_x = 2,
-            .next_y = 2,
+            .atlas_size = atlas_size,
+            .next_x = 1,
+            .next_y = 1,
             .row_height = 0,
+            .dirty = false,
+            .ascii_uploaded = [_]bool{false} ** 128,
         };
 
         // Pre-cache ASCII printable characters
         for (32..127) |c| {
-            _ = self.cacheGlyph(@intCast(c));
+            _ = self.ensureGlyphUploaded(@intCast(c));
         }
 
         // Create D3D11 texture
         try self.createAtlasTexture(renderer);
 
         return self;
+    }
+
+    /// Initialize with font data (loads font into glyph cache)
+    pub fn initWithFont(
+        allocator: std.mem.Allocator,
+        renderer: *D3D11Renderer,
+        glyph_cache: *GlyphCache,
+        font_data: []const u8,
+        font_size: u32,
+    ) !D3D11TextRenderer {
+        const font_id = try glyph_cache.loadFont(font_data);
+        return init(allocator, renderer, glyph_cache, font_id, font_size);
     }
 
     pub fn deinit(self: *D3D11TextRenderer) void {
@@ -91,65 +95,77 @@ pub const D3D11TextRenderer = struct {
             _ = tex.IUnknown.vtable.Release(&tex.IUnknown);
         }
         self.allocator.free(self.atlas_data);
-        self.face.deinit();
-        self.ft_lib.deinit();
     }
 
-    fn cacheGlyph(self: *D3D11TextRenderer, char: u8) bool {
+    fn ensureGlyphUploaded(self: *D3D11TextRenderer, char: u8) bool {
         if (char >= 128) return false;
-        if (self.glyphs[char].cached) return true;
+        if (self.ascii_uploaded[char]) return true;
 
-        const glyph_index = self.face.getCharIndex(char) orelse return false;
-        self.face.loadGlyph(glyph_index, .{ .render = true }) catch return false;
+        const glyph_id = self.glyph_cache.getGlyphIndex(self.font_id, char) orelse return false;
 
-        const glyph = self.face.handle.*.glyph;
-        const bitmap = &glyph.*.bitmap;
+        // Get or create cached glyph (this handles rasterization)
+        const glyph = self.glyph_cache.getGlyph(self.font_id, glyph_id, self.font_size) orelse return false;
 
-        const w = bitmap.width;
-        const h = bitmap.rows;
+        // Already uploaded?
+        if (glyph.uploaded) {
+            self.ascii_uploaded[char] = true;
+            return true;
+        }
 
-        // Check if we need to move to next row
-        if (self.next_x + w + 2 > self.atlas_size) {
-            self.next_x = 2;
-            self.next_y += self.row_height + 2;
+        const w: u32 = @intFromFloat(glyph.pixel_bounds.size.width);
+        const h: u32 = @intFromFloat(glyph.pixel_bounds.size.height);
+
+        if (w == 0 or h == 0) {
+            // Space or empty - mark as uploaded but with no bitmap
+            glyph.uploaded = true;
+            self.ascii_uploaded[char] = true;
+            return true;
+        }
+
+        // Need to re-rasterize to get bitmap data (getGlyph only caches metrics)
+        const rasterized = self.glyph_cache.rasterizeGlyph(self.font_id, glyph_id, self.font_size) orelse return false;
+
+        // Allocate space in atlas
+        if (self.next_x + w + 1 > self.atlas_size) {
+            self.next_x = 1;
+            self.next_y += self.row_height + 1;
             self.row_height = 0;
         }
 
-        // Check if atlas is full
-        if (self.next_y + h + 2 > self.atlas_size) {
-            return false;
+        if (self.next_y + h + 1 > self.atlas_size) {
+            return false; // Atlas full
         }
 
-        // Copy bitmap to atlas
-        if (w > 0 and h > 0) {
-            const src: [*]const u8 = @ptrCast(bitmap.buffer);
-            const pitch: u32 = @intCast(if (bitmap.pitch < 0) -bitmap.pitch else bitmap.pitch);
+        const x = self.next_x;
+        const y = self.next_y;
 
-            for (0..h) |row| {
-                const dst_offset = (self.next_y + row) * self.atlas_size + self.next_x;
-                const src_offset = row * pitch;
-                for (0..w) |col| {
-                    self.atlas_data[dst_offset + col] = src[src_offset + col];
-                }
+        // Copy to atlas data
+        for (0..h) |row| {
+            const dst_offset = (y + row) * self.atlas_size + x;
+            const src_offset = row * w;
+            for (0..w) |col| {
+                self.atlas_data[dst_offset + col] = rasterized.bitmap[src_offset + col];
             }
         }
 
-        self.glyphs[char] = .{
-            .x = self.next_x,
-            .y = self.next_y,
-            .w = w,
-            .h = h,
-            .bearing_x = glyph.*.bitmap_left,
-            .bearing_y = glyph.*.bitmap_top,
-            .advance = @intCast(glyph.*.advance.x >> 6),
-            .cached = true,
-        };
+        // Update UV in cached glyph
+        const atlas_f: f32 = @floatFromInt(self.atlas_size);
+        glyph.uv_bounds = Bounds(f32).fromXYWH(
+            @as(f32, @floatFromInt(x)) / atlas_f,
+            @as(f32, @floatFromInt(y)) / atlas_f,
+            @as(f32, @floatFromInt(w)) / atlas_f,
+            @as(f32, @floatFromInt(h)) / atlas_f,
+        );
+        glyph.uploaded = true;
 
-        self.next_x += w + 2;
+        // Update tracking
+        self.next_x += w + 1;
         if (h > self.row_height) {
             self.row_height = h;
         }
 
+        self.ascii_uploaded[char] = true;
+        self.dirty = true;
         return true;
     }
 
@@ -170,7 +186,10 @@ pub const D3D11TextRenderer = struct {
 
         var texture: ?*d3d11.ID3D11Texture2D = null;
         const tex_hr = renderer.device.vtable.CreateTexture2D(
-            renderer.device, &desc, &init_data, @ptrCast(&texture)
+            renderer.device,
+            &desc,
+            &init_data,
+            @ptrCast(&texture),
         );
         if (tex_hr != 0 or texture == null) {
             return error.CreateTextureFailed;
@@ -185,65 +204,29 @@ pub const D3D11TextRenderer = struct {
 
         var srv: ?*d3d11.ID3D11ShaderResourceView = null;
         const srv_hr = renderer.device.vtable.CreateShaderResourceView(
-            renderer.device, @ptrCast(texture), &srv_desc, @ptrCast(&srv)
+            renderer.device,
+            @ptrCast(texture),
+            &srv_desc,
+            @ptrCast(&srv),
         );
         if (srv_hr != 0 or srv == null) {
             return error.CreateSRVFailed;
         }
         self.atlas_srv = srv;
+        self.dirty = false;
     }
 
-    /// Measure the width of a string in pixels
+    /// Measure text width
     pub fn measureText(self: *D3D11TextRenderer, str: []const u8) f32 {
         var width: f32 = 0;
         for (str) |c| {
-            if (c < 128 and self.glyphs[c].cached) {
-                width += @floatFromInt(self.glyphs[c].advance);
+            if (c >= 128) continue;
+            const glyph_id = self.glyph_cache.getGlyphIndex(self.font_id, c) orelse continue;
+            if (self.glyph_cache.getGlyph(self.font_id, glyph_id, self.font_size)) |glyph| {
+                width += glyph.advance;
             }
         }
         return width;
-    }
-
-    /// Get glyph info for scene-based rendering
-    /// Returns UV bounds in atlas coordinates (0-1)
-    pub const GlyphInfo = struct {
-        uv_bounds: Bounds(f32), // UV coordinates in atlas
-        pixel_bounds: Bounds(f32), // Pixel size and bearing
-        advance: f32,
-        valid: bool,
-    };
-
-    pub fn getGlyphInfo(self: *D3D11TextRenderer, char: u8) GlyphInfo {
-        if (char >= 128 or !self.glyphs[char].cached) {
-            return .{ .uv_bounds = Bounds(f32).zero, .pixel_bounds = Bounds(f32).zero, .advance = 0, .valid = false };
-        }
-
-        const g = self.glyphs[char];
-        const atlas_f: f32 = @floatFromInt(self.atlas_size);
-        const gw: f32 = @floatFromInt(g.w);
-        const gh: f32 = @floatFromInt(g.h);
-
-        return .{
-            .uv_bounds = Bounds(f32).fromXYWH(
-                @as(f32, @floatFromInt(g.x)) / atlas_f,
-                @as(f32, @floatFromInt(g.y)) / atlas_f,
-                gw / atlas_f,
-                gh / atlas_f,
-            ),
-            .pixel_bounds = Bounds(f32).fromXYWH(
-                @floatFromInt(g.bearing_x),
-                -@as(f32, @floatFromInt(g.bearing_y)),
-                gw,
-                gh,
-            ),
-            .advance = @floatFromInt(g.advance),
-            .valid = true,
-        };
-    }
-
-    /// Get atlas size
-    pub fn getAtlasSize(self: *D3D11TextRenderer) u32 {
-        return self.atlas_size;
     }
 
     /// Draw text centered at (cx, baseline)
@@ -252,10 +235,9 @@ pub const D3D11TextRenderer = struct {
         self.draw(renderer, str, cx - width / 2, baseline, color);
     }
 
-    /// Draw text at (x, baseline) - x is left edge
+    /// Draw text at (x, baseline)
     pub fn draw(self: *D3D11TextRenderer, renderer: *D3D11Renderer, str: []const u8, start_x: f32, baseline: f32, color: [4]f32) void {
         const srv = self.atlas_srv orelse return;
-        const atlas_f: f32 = @floatFromInt(self.atlas_size);
 
         var sprites: [256]SpriteInstance = undefined;
         var count: usize = 0;
@@ -263,33 +245,47 @@ pub const D3D11TextRenderer = struct {
 
         for (str) |c| {
             if (c >= 128) continue;
-            const g = self.glyphs[c];
-            if (!g.cached) continue;
 
-            if (g.w > 0 and g.h > 0 and count < sprites.len) {
-                const gx = x + @as(f32, @floatFromInt(g.bearing_x));
-                const gy = baseline - @as(f32, @floatFromInt(g.bearing_y));
-                const gw: f32 = @floatFromInt(g.w);
-                const gh: f32 = @floatFromInt(g.h);
+            // Ensure uploaded
+            _ = self.ensureGlyphUploaded(c);
 
+            const glyph_id = self.glyph_cache.getGlyphIndex(self.font_id, c) orelse continue;
+            const glyph = self.glyph_cache.getGlyph(self.font_id, glyph_id, self.font_size) orelse continue;
+
+            if (glyph.pixel_bounds.size.width > 0 and glyph.pixel_bounds.size.height > 0 and glyph.uploaded and count < sprites.len) {
                 sprites[count] = .{
-                    .bounds = .{ gx, gy, gw, gh },
+                    .bounds = .{
+                        x + glyph.pixel_bounds.origin.x,
+                        baseline + glyph.pixel_bounds.origin.y,
+                        glyph.pixel_bounds.size.width,
+                        glyph.pixel_bounds.size.height,
+                    },
                     .uv_bounds = .{
-                        @as(f32, @floatFromInt(g.x)) / atlas_f,
-                        @as(f32, @floatFromInt(g.y)) / atlas_f,
-                        gw / atlas_f,
-                        gh / atlas_f,
+                        glyph.uv_bounds.origin.x,
+                        glyph.uv_bounds.origin.y,
+                        glyph.uv_bounds.size.width,
+                        glyph.uv_bounds.size.height,
                     },
                     .color = color,
                     .content_mask = .{ 0, 0, 0, 0 },
                 };
                 count += 1;
             }
-            x += @floatFromInt(g.advance);
+            x += glyph.advance;
         }
 
         if (count > 0) {
             renderer.drawSprites(sprites[0..count], srv, true);
         }
+    }
+
+    /// Get atlas size
+    pub fn getAtlasSize(self: *D3D11TextRenderer) u32 {
+        return self.atlas_size;
+    }
+
+    /// Get glyph cache (for sharing with TextSystem)
+    pub fn getGlyphCache(self: *D3D11TextRenderer) *GlyphCache {
+        return self.glyph_cache;
     }
 };

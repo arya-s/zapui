@@ -118,12 +118,19 @@ pub fn main() !void {
     var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Text systems
+    // Shared glyph cache (used by both TextSystem and D3D11TextRenderer)
+    var glyph_cache = try zapui.glyph_cache.GlyphCache.init(allocator);
+    defer glyph_cache.deinit();
+
+    const font_id = try glyph_cache.loadFont(font_data);
+
+    // Text system (for layout measurement)
     var text_system = try zapui.text_system.TextSystem.init(allocator);
     defer text_system.deinit();
     _ = try text_system.loadFontMem(font_data);
 
-    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, font_data, 20);
+    // Text renderer (uses shared glyph cache)
+    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, &glyph_cache, font_id, 20);
     defer text_renderer.deinit();
 
     // Scene context (combines renderer + text renderer)
