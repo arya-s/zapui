@@ -1,10 +1,8 @@
 #!/bin/bash
-# Capture screenshot of a ZapUI example on Windows using ShareX
+# Capture screenshot of a ZapUI example on Windows
 #
 # Usage:
 #   ./capture_zapui.sh hello_world
-#
-# Note: Don't interact with other windows while capturing
 
 set -e
 
@@ -29,28 +27,50 @@ echo "=== Capturing ZapUI: $EXAMPLE ==="
 # Copy exe to Windows temp
 cp "$EXE" /mnt/c/temp/
 
-# Get ShareX screenshot folder
-USERNAME=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r')
-SHAREX_FOLDER="/mnt/c/Users/$USERNAME/Documents/ShareX/Screenshots"
+echo "Launching and capturing..."
+powershell.exe -Command '
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinCapture {
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
+}
+"@
 
-echo "Launching ${EXAMPLE}.exe..."
-powershell.exe -Command "Start-Process 'C:\temp\\${EXAMPLE}.exe'"
-sleep 2
+Start-Process "C:\temp\'"$EXAMPLE"'.exe"
+Start-Sleep -Seconds 2
 
-echo "Capturing..."
-"/mnt/c/Program Files/ShareX/ShareX.exe" -ActiveWindow -silent &
-sleep 2
+$p = Get-Process -Name "'"$EXAMPLE"'" -EA SilentlyContinue | Select -First 1
+if ($p -and $p.MainWindowHandle -ne 0) {
+    $h = $p.MainWindowHandle
+    [WinCapture]::SetForegroundWindow($h) | Out-Null
+    Start-Sleep -Milliseconds 500
+    $r = New-Object WinCapture+RECT
+    [WinCapture]::GetWindowRect($h, [ref]$r) | Out-Null
+    $w = $r.R - $r.L
+    $h = $r.B - $r.T
+    Write-Host "Window: $w x $h"
+    $bmp = New-Object Drawing.Bitmap($w, $h)
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($r.L, $r.T, 0, 0, [Drawing.Size]::new($w, $h))
+    $bmp.Save("C:\temp\zapui_capture.png", [Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose()
+    $bmp.Dispose()
+    Write-Host "Captured"
+}
 
-echo "Closing..."
-taskkill.exe /IM "${EXAMPLE}.exe" /F 2>/dev/null || true
-sleep 1
+Stop-Process -Name "'"$EXAMPLE"'" -Force -EA SilentlyContinue
+'
 
-# Find most recent screenshot
-NEWEST=$(find "$SHAREX_FOLDER" -name "*.png" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-
-if [ -n "$NEWEST" ]; then
-    cp "$NEWEST" "$SCREENSHOTS_DIR/zapui.png"
+if [ -f "/mnt/c/temp/zapui_capture.png" ]; then
+    cp "/mnt/c/temp/zapui_capture.png" "$SCREENSHOTS_DIR/zapui.png"
+    rm "/mnt/c/temp/zapui_capture.png"
     echo "✅ Saved: $SCREENSHOTS_DIR/zapui.png"
 else
-    echo "❌ Screenshot not found"
+    echo "❌ Screenshot failed"
+    exit 1
 fi

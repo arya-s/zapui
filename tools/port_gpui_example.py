@@ -393,9 +393,9 @@ fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {{
 const TextRenderer = struct {{
     srv: *d3d11.ID3D11ShaderResourceView,
     glyphs: [128]Glyph,
-    size: f32,
+    atlas_size: f32,
 
-    const Glyph = struct {{ u: f32, v: f32, w: f32, h: f32, bx: f32, by: f32, adv: f32 }};
+    const Glyph = struct {{ x: u32, y: u32, w: u32, h: u32, bx: i32, by: i32, adv: i32 }};
 
     fn init(alloc: std.mem.Allocator, renderer: *D3D11Renderer) !TextRenderer {{
         const ft = try freetype.Library.init();
@@ -404,13 +404,14 @@ const TextRenderer = struct {{
         defer face.deinit();
         try face.setPixelSizes(0, 20);
 
-        const size: u32 = 256;
+        const size: u32 = 512;
         var data = try alloc.alloc(u8, size * size);
         defer alloc.free(data);
         @memset(data, 0);
 
-        var glyphs: [128]Glyph = undefined;
+        var glyphs = [_]Glyph{{.{{ .x = 0, .y = 0, .w = 0, .h = 0, .bx = 0, .by = 0, .adv = 0 }}}} ** 128;
         var px: u32 = 2;
+        const py: u32 = 2;
         for (32..127) |c| {{
             const idx = face.getCharIndex(@intCast(c)) orelse continue;
             face.loadGlyph(idx, .{{ .render = true }}) catch continue;
@@ -421,21 +422,22 @@ const TextRenderer = struct {{
                 const pitch: u32 = @intCast(if (bmp.pitch < 0) -bmp.pitch else bmp.pitch);
                 for (0..bmp.rows) |row| {{
                     for (0..bmp.width) |col| {{
-                        data[(2 + row) * size + px + col] = src[row * pitch + col];
+                        data[(py + row) * size + px + col] = src[row * pitch + col];
                     }}
                 }}
+                glyphs[c] = .{{
+                    .x = px,
+                    .y = py,
+                    .w = bmp.width,
+                    .h = bmp.rows,
+                    .bx = g.*.bitmap_left,
+                    .by = g.*.bitmap_top,
+                    .adv = @intCast(g.*.advance.x >> 6),
+                }};
+                px += bmp.width + 2;
+            }} else {{
+                glyphs[c] = .{{ .x = 0, .y = 0, .w = 0, .h = 0, .bx = 0, .by = 0, .adv = @intCast(g.*.advance.x >> 6) }};
             }}
-            const sf: f32 = @floatFromInt(size);
-            glyphs[c] = .{{
-                .u = @as(f32, @floatFromInt(px)) / sf,
-                .v = 2.0 / sf,
-                .w = @as(f32, @floatFromInt(bmp.width)) / sf,
-                .h = @as(f32, @floatFromInt(bmp.rows)) / sf,
-                .bx = @floatFromInt(g.*.bitmap_left),
-                .by = @floatFromInt(g.*.bitmap_top),
-                .adv = @floatFromInt(g.*.advance.x >> 6),
-            }};
-            px += bmp.width + 2;
         }}
 
         var desc = std.mem.zeroes(d3d11.D3D11_TEXTURE2D_DESC);
@@ -445,6 +447,7 @@ const TextRenderer = struct {{
         desc.ArraySize = 1;
         desc.Format = .R8_UNORM;
         desc.SampleDesc.Count = 1;
+        desc.Usage = .DEFAULT;
         desc.BindFlags = .{{ .SHADER_RESOURCE = 1 }};
         var sub = std.mem.zeroes(d3d11.D3D11_SUBRESOURCE_DATA);
         sub.pSysMem = data.ptr;
@@ -458,13 +461,13 @@ const TextRenderer = struct {{
         var srv: ?*d3d11.ID3D11ShaderResourceView = null;
         _ = renderer.device.vtable.CreateShaderResourceView(renderer.device, @ptrCast(tex), &srv_desc, @ptrCast(&srv));
 
-        return .{{ .srv = srv.?, .glyphs = glyphs, .size = @floatFromInt(size) }};
+        return .{{ .srv = srv.?, .glyphs = glyphs, .atlas_size = @floatFromInt(size) }};
     }}
 
     fn draw(self: *TextRenderer, renderer: *D3D11Renderer, str: []const u8, cx: f32, baseline: f32, color: [4]f32) void {{
         var w: f32 = 0;
         for (str) |c| {{
-            if (c < 128) w += self.glyphs[c].adv;
+            if (c < 128) w += @floatFromInt(self.glyphs[c].adv);
         }}
 
         var sprites: [64]SpriteInstance = undefined;
@@ -474,15 +477,22 @@ const TextRenderer = struct {{
             if (c >= 128) continue;
             const g = self.glyphs[c];
             if (g.w > 0) {{
+                const gw: f32 = @floatFromInt(g.w);
+                const gh: f32 = @floatFromInt(g.h);
                 sprites[n] = .{{
-                    .bounds = .{{ x + g.bx, baseline - g.by, g.w * self.size, g.h * self.size }},
-                    .uv_bounds = .{{ g.u, g.v, g.w, g.h }},
+                    .bounds = .{{ x + @as(f32, @floatFromInt(g.bx)), baseline - @as(f32, @floatFromInt(g.by)), gw, gh }},
+                    .uv_bounds = .{{
+                        @as(f32, @floatFromInt(g.x)) / self.atlas_size,
+                        @as(f32, @floatFromInt(g.y)) / self.atlas_size,
+                        gw / self.atlas_size,
+                        gh / self.atlas_size,
+                    }},
                     .color = color,
                     .content_mask = .{{ 0, 0, 0, 0 }},
                 }};
                 n += 1;
             }}
-            x += g.adv;
+            x += @floatFromInt(g.adv);
         }}
         if (n > 0) renderer.drawSprites(sprites[0..n], self.srv, true);
     }}

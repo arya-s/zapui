@@ -67,7 +67,7 @@
             <div class="stat-label">Rust LOC</div>
         </div>
         <div class="stat">
-            <div class="stat-value">239</div>
+            <div class="stat-value">288</div>
             <div class="stat-label">Zig LOC</div>
         </div>
     </div>
@@ -208,241 +208,290 @@ fn main() {
         <div class="card">
             <h3>Zig (ZapUI) - hello_world.zig</h3>
             <pre class="zig"><code>//! Hello World - Port of GPUI&#x27;s hello_world.rs example
+//!
+//! Win32 + D3D11 implementation.
+//! See hello_world.rs for original GPUI source.
 
 const std = @import(&quot;std&quot;);
 const zapui = @import(&quot;zapui&quot;);
 const freetype = @import(&quot;freetype&quot;);
 
 const d3d11 = zapui.renderer.d3d11_renderer.d3d11;
+const S_OK = zapui.renderer.d3d11_renderer.S_OK;
+
+const win32_platform = zapui.platform.Win32Backend;
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
 const SpriteInstance = zapui.renderer.d3d11_renderer.SpriteInstance;
-const Win32 = zapui.platform.Win32Backend;
 
-// Colors
-fn rgb(hex: u24) [4]f32 {
-    return .{
-        @as(f32, @floatFromInt((hex &gt;&gt; 16) &amp; 0xFF)) / 255.0,
-        @as(f32, @floatFromInt((hex &gt;&gt; 8) &amp; 0xFF)) / 255.0,
-        @as(f32, @floatFromInt(hex &amp; 0xFF)) / 255.0,
-        1.0,
-    };
-}
-// rgb(0x0000ff)
-// rgb(0x505050)
-const black = [4]f32{ 0, 0, 0, 1 };
-const blue = [4]f32{ 0, 0, 1, 1 };
-// rgb(0xffffff)
-const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()
-const red = [4]f32{ 1, 0, 0, 1 };
-const white = [4]f32{ 1, 1, 1, 1 };
-const yellow = [4]f32{ 1, 1, 0, 1 };
-
-// ============================================================================
-// HelloWorld
-// ============================================================================
-
-const HelloWorld = struct {
-    text: []const u8,
-
-    fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: anytype) void {
-        // div()
-        //     .flex().flex_col().gap_3()
-        //     .bg(rgb(0x505050))
-        //     .size(px(500.0))
-        //     .justify_center().items_center()
-        //     .text_xl().text_color(rgb(0xffffff))
-        //     .child(format!(&quot;Hello, {}!&quot;, &amp;self.text))
-        //     .child(div().flex().gap_2()
-        //         .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //         .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //         .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //         .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //         .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //         .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
-        //     )
-
-        const bg = rgb(0x505050);
-        renderer.clear(bg[0], bg[1], bg[2], bg[3]);
-
-        // Layout: flex_col, justify_center, items_center, gap_3
-        const size_8: f32 = 32;
-        const gap_2: f32 = 8;
-        const gap_3: f32 = 12;
-        const text_xl: f32 = 20;
-
-        const content_h = text_xl + gap_3 + size_8;
-        const y = (500 - content_h) / 2;
-        const row_w = 6 * size_8 + 5 * gap_2;
-        const x = (500 - row_w) / 2;
-
-        // .child(format!(&quot;Hello, {}!&quot;, &amp;self.text))
-        var buf: [64]u8 = undefined;
-        const label = std.fmt.bufPrint(&amp;buf, &quot;Hello, {s}!&quot;, .{self.text}) catch &quot;Hello!&quot;;
-        text_renderer.draw(renderer, label, 250, y + 16, white);
-
-        // .child(div().flex().gap_2() ...)
-        const row_y = y + text_xl + gap_3;
-        const quads = [_]QuadInstance{
-            quad(x + 0 * (size_8 + gap_2), row_y, size_8, red, white),
-            quad(x + 1 * (size_8 + gap_2), row_y, size_8, green, white),
-            quad(x + 2 * (size_8 + gap_2), row_y, size_8, blue, white),
-            quad(x + 3 * (size_8 + gap_2), row_y, size_8, yellow, white),
-            quad(x + 4 * (size_8 + gap_2), row_y, size_8, black, white),
-            quad(x + 5 * (size_8 + gap_2), row_y, size_8, white, black),
-        };
-        renderer.drawQuads(&amp;quads);
-    }
-};
-
-// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
-fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
-    return .{
-        .bounds = .{ x, y, size, size },
-        .background_color = bg,
-        .border_color = border,
-        .border_widths = .{ 1, 1, 1, 1 },
-        .corner_radii = .{ 6, 6, 6, 6 },
-        .border_style = .{ 1, 0, 0, 0 }, // dashed
-        .content_mask = .{ 0, 0, 0, 0 },
-    };
+fn release(comptime T: type, obj: *T) void {
+    _ = obj.IUnknown.vtable.Release(&amp;obj.IUnknown);
 }
 
+// Embedded font
+const font_data = @embedFile(&quot;LiberationSans-Regular.ttf&quot;);
+
 // ============================================================================
-// Text Rendering (GPUI handles this internally)
+// Colors - matching GPUI example
 // ============================================================================
 
-const TextRenderer = struct {
-    srv: *d3d11.ID3D11ShaderResourceView,
-    glyphs: [128]Glyph,
-    size: f32,
-
-    const Glyph = struct { u: f32, v: f32, w: f32, h: f32, bx: f32, by: f32, adv: f32 };
-
-    fn init(alloc: std.mem.Allocator, renderer: *D3D11Renderer) !TextRenderer {
-        const ft = try freetype.Library.init();
-        defer ft.deinit();
-        const face = try ft.initMemoryFace(@embedFile(&quot;LiberationSans-Regular.ttf&quot;), 0);
-        defer face.deinit();
-        try face.setPixelSizes(0, 20);
-
-        const size: u32 = 256;
-        var data = try alloc.alloc(u8, size * size);
-        defer alloc.free(data);
-        @memset(data, 0);
-
-        var glyphs: [128]Glyph = undefined;
-        var px: u32 = 2;
-        for (32..127) |c| {
-            const idx = face.getCharIndex(@intCast(c)) orelse continue;
-            face.loadGlyph(idx, .{ .render = true }) catch continue;
-            const g = face.handle.*.glyph;
-            const bmp = &amp;g.*.bitmap;
-            if (bmp.width &gt; 0 and bmp.rows &gt; 0) {
-                const src: [*]const u8 = @ptrCast(bmp.buffer);
-                const pitch: u32 = @intCast(if (bmp.pitch &lt; 0) -bmp.pitch else bmp.pitch);
-                for (0..bmp.rows) |row| {
-                    for (0..bmp.width) |col| {
-                        data[(2 + row) * size + px + col] = src[row * pitch + col];
-                    }
-                }
-            }
-            const sf: f32 = @floatFromInt(size);
-            glyphs[c] = .{
-                .u = @as(f32, @floatFromInt(px)) / sf,
-                .v = 2.0 / sf,
-                .w = @as(f32, @floatFromInt(bmp.width)) / sf,
-                .h = @as(f32, @floatFromInt(bmp.rows)) / sf,
-                .bx = @floatFromInt(g.*.bitmap_left),
-                .by = @floatFromInt(g.*.bitmap_top),
-                .adv = @floatFromInt(g.*.advance.x &gt;&gt; 6),
-            };
-            px += bmp.width + 2;
-        }
-
-        var desc = std.mem.zeroes(d3d11.D3D11_TEXTURE2D_DESC);
-        desc.Width = size;
-        desc.Height = size;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = .R8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.BindFlags = .{ .SHADER_RESOURCE = 1 };
-        var sub = std.mem.zeroes(d3d11.D3D11_SUBRESOURCE_DATA);
-        sub.pSysMem = data.ptr;
-        sub.SysMemPitch = size;
-        var tex: ?*d3d11.ID3D11Texture2D = null;
-        _ = renderer.device.vtable.CreateTexture2D(renderer.device, &amp;desc, &amp;sub, @ptrCast(&amp;tex));
-        var srv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
-        srv_desc.Format = .R8_UNORM;
-        srv_desc.ViewDimension = ._SRV_DIMENSION_TEXTURE2D;
-        srv_desc.Anonymous.Texture2D.MipLevels = 1;
-        var srv: ?*d3d11.ID3D11ShaderResourceView = null;
-        _ = renderer.device.vtable.CreateShaderResourceView(renderer.device, @ptrCast(tex), &amp;srv_desc, @ptrCast(&amp;srv));
-
-        return .{ .srv = srv.?, .glyphs = glyphs, .size = @floatFromInt(size) };
-    }
-
-    fn draw(self: *TextRenderer, renderer: *D3D11Renderer, str: []const u8, cx: f32, baseline: f32, color: [4]f32) void {
-        var w: f32 = 0;
-        for (str) |c| {
-            if (c &lt; 128) w += self.glyphs[c].adv;
-        }
-
-        var sprites: [64]SpriteInstance = undefined;
-        var n: usize = 0;
-        var x = cx - w / 2;
-        for (str) |c| {
-            if (c &gt;= 128) continue;
-            const g = self.glyphs[c];
-            if (g.w &gt; 0) {
-                sprites[n] = .{
-                    .bounds = .{ x + g.bx, baseline - g.by, g.w * self.size, g.h * self.size },
-                    .uv_bounds = .{ g.u, g.v, g.w, g.h },
-                    .color = color,
-                    .content_mask = .{ 0, 0, 0, 0 },
-                };
-                n += 1;
-            }
-            x += g.adv;
-        }
-        if (n &gt; 0) renderer.drawSprites(sprites[0..n], self.srv, true);
-    }
-};
+const bg_color = [4]f32{ 0.314, 0.314, 0.314, 1.0 }; // rgb(0x505050)
+const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
+const green_color = [4]f32{ 0.0, 0.5, 0.0, 1.0 }; // GPUI&#x27;s green
+const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
+const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
+const black_color = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
+const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 
 // ============================================================================
 // Main
 // ============================================================================
 
 pub fn main() !void {
-    var platform = try Win32.init();
-    defer platform.deinit();
+    const allocator = std.heap.page_allocator;
 
-    const window = try Win32.createWindow(&amp;platform, .{
+    // Initialize FreeType for text rendering
+    const ft_lib = freetype.Library.init() catch {
+        std.debug.print(&quot;Failed to initialize FreeType\n&quot;, .{});
+        return error.FreeTypeInitFailed;
+    };
+    defer ft_lib.deinit();
+
+    const face = ft_lib.initMemoryFace(font_data, 0) catch {
+        std.debug.print(&quot;Failed to load font\n&quot;, .{});
+        return error.FontLoadFailed;
+    };
+    defer face.deinit();
+
+    // Set font size (text_xl = 20px)
+    face.setPixelSizes(0, 20) catch {
+        std.debug.print(&quot;Failed to set font size\n&quot;, .{});
+        return error.FontSizeFailed;
+    };
+
+    // Initialize Win32 platform
+    var plat = try win32_platform.init();
+    defer plat.deinit();
+
+    // Create 500x500 window to match GPUI example
+    const window = try win32_platform.createWindow(&amp;plat, .{
         .width = 500,
         .height = 500,
-        .title = &quot;Hello World&quot;,
+        .title = &quot;Hello World - ZapUI (Win32 + D3D11)&quot;,
     });
     defer window.destroy();
 
-    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, 500, 500);
+    std.debug.print(&quot;Hello World - ZapUI (Win32 + D3D11)\n&quot;, .{});
+    std.debug.print(&quot;Press ESC to exit\n&quot;, .{});
+
+    // Initialize D3D11 renderer
+    var renderer = D3D11Renderer.init(allocator, window.hwnd.?, 500, 500) catch |err| {
+        std.debug.print(&quot;Failed to initialize D3D11: {}\n&quot;, .{err});
+        return err;
+    };
     defer renderer.deinit();
 
-    var text_renderer = try TextRenderer.init(std.heap.page_allocator, &amp;renderer);
+    // Create glyph atlas texture
+    const atlas_size: u32 = 256;
+    var atlas_data = try allocator.alloc(u8, atlas_size * atlas_size);
+    defer allocator.free(atlas_data);
+    @memset(atlas_data, 0);
 
-    var state = HelloWorld{ .text = &quot;World&quot; };
+    // Render &quot;Hello, World!&quot; glyphs into atlas
+    const text = &quot;Hello, World!&quot;;
+    var glyph_x: u32 = 2;
+    const glyph_y: u32 = 2;
 
+    const GlyphInfo = struct {
+        atlas_x: u32,
+        atlas_y: u32,
+        width: u32,
+        height: u32,
+        bearing_x: i32,
+        bearing_y: i32,
+        advance: i32,
+    };
+
+    var glyph_infos: [text.len]GlyphInfo = undefined;
+
+    for (text, 0..) |char, i| {
+        const glyph_index = face.getCharIndex(char) orelse continue;
+        face.loadGlyph(glyph_index, .{ .render = true }) catch continue;
+
+        const glyph = face.handle.*.glyph;
+        const bitmap = &amp;glyph.*.bitmap;
+
+        if (bitmap.width &gt; 0 and bitmap.rows &gt; 0) {
+            const src: [*]const u8 = @ptrCast(bitmap.buffer);
+            const w = bitmap.width;
+            const h = bitmap.rows;
+            const pitch = @as(u32, @intCast(if (bitmap.pitch &lt; 0) -bitmap.pitch else bitmap.pitch));
+
+            for (0..h) |row| {
+                const dst_row = (glyph_y + row) * atlas_size + glyph_x;
+                const src_row = row * pitch;
+                for (0..w) |col| {
+                    atlas_data[dst_row + col] = src[src_row + col];
+                }
+            }
+
+            glyph_infos[i] = .{
+                .atlas_x = glyph_x,
+                .atlas_y = glyph_y,
+                .width = w,
+                .height = h,
+                .bearing_x = glyph.*.bitmap_left,
+                .bearing_y = glyph.*.bitmap_top,
+                .advance = @intCast(glyph.*.advance.x &gt;&gt; 6),
+            };
+
+            glyph_x += w + 2;
+        } else {
+            glyph_infos[i] = .{
+                .atlas_x = 0,
+                .atlas_y = 0,
+                .width = 0,
+                .height = 0,
+                .bearing_x = 0,
+                .bearing_y = 0,
+                .advance = @intCast(glyph.*.advance.x &gt;&gt; 6),
+            };
+        }
+    }
+
+    // Create D3D11 texture for atlas
+    var tex_desc = std.mem.zeroes(d3d11.D3D11_TEXTURE2D_DESC);
+    tex_desc.Width = atlas_size;
+    tex_desc.Height = atlas_size;
+    tex_desc.MipLevels = 1;
+    tex_desc.ArraySize = 1;
+    tex_desc.Format = .R8_UNORM;
+    tex_desc.SampleDesc.Count = 1;
+    tex_desc.Usage = .DEFAULT;
+    tex_desc.BindFlags = .{ .SHADER_RESOURCE = 1 };
+
+    var init_data = std.mem.zeroes(d3d11.D3D11_SUBRESOURCE_DATA);
+    init_data.pSysMem = atlas_data.ptr;
+    init_data.SysMemPitch = atlas_size;
+
+    var atlas_texture: ?*d3d11.ID3D11Texture2D = null;
+    const tex_hr = renderer.device.vtable.CreateTexture2D(renderer.device, &amp;tex_desc, &amp;init_data, @ptrCast(&amp;atlas_texture));
+    if (tex_hr != S_OK or atlas_texture == null) {
+        std.debug.print(&quot;Failed to create atlas texture\n&quot;, .{});
+        return error.CreateTextureFailed;
+    }
+    defer if (atlas_texture) |t| release(d3d11.ID3D11Texture2D, t);
+
+    // Create SRV for atlas
+    var srv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
+    srv_desc.Format = .R8_UNORM;
+    srv_desc.ViewDimension = ._SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Anonymous.Texture2D.MostDetailedMip = 0;
+    srv_desc.Anonymous.Texture2D.MipLevels = 1;
+
+    var atlas_srv: ?*d3d11.ID3D11ShaderResourceView = null;
+    const srv_hr = renderer.device.vtable.CreateShaderResourceView(renderer.device, @ptrCast(atlas_texture), &amp;srv_desc, @ptrCast(&amp;atlas_srv));
+    if (srv_hr != S_OK or atlas_srv == null) {
+        std.debug.print(&quot;Failed to create atlas SRV\n&quot;, .{});
+        return error.CreateSRVFailed;
+    }
+    defer if (atlas_srv) |s| release(d3d11.ID3D11ShaderResourceView, s);
+
+    // Main loop
     while (!window.shouldClose()) {
-        for (window.pollEvents()) |e| {
-            switch (e) {
-                .key =&gt; |k| if (k.key == .escape) return,
-                .resize =&gt; |r| renderer.resize(r.width, r.height) catch {},
+        const events = window.pollEvents();
+
+        for (events) |event| {
+            switch (event) {
+                .key =&gt; |k| {
+                    if (k.key == .escape and k.action == .press) {
+                        return;
+                    }
+                },
+                .resize =&gt; |r| {
+                    renderer.resize(r.width, r.height) catch {};
+                },
                 else =&gt; {},
             }
         }
 
+        // Render frame
         renderer.beginFrame();
-        state.render(&amp;renderer, &amp;text_renderer);
+        renderer.clear(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
+
+        // Layout calculations matching GPUI:
+        // - gap_3 = 12px between text and boxes
+        // - size_8 = 32px boxes, gap_2 = 8px between boxes
+        const box_size: f32 = 32;
+        const gap_2: f32 = 8;
+        const gap_3: f32 = 12;
+        const text_height: f32 = 20;
+        const total_content_height = text_height + gap_3 + box_size;
+        const content_start_y: f32 = (500 - total_content_height) / 2;
+        const total_boxes_width = 6 * box_size + 5 * gap_2;
+        const boxes_x = (500 - total_boxes_width) / 2;
+        const boxes_y = content_start_y + text_height + gap_3;
+
+        // Draw colored boxes
+        var quads: [6]QuadInstance = undefined;
+
+        const colors = [_][4]f32{ red_color, green_color, blue_color, yellow_color, black_color, white_color };
+        const border_colors = [_][4]f32{ white_color, white_color, white_color, white_color, white_color, black_color };
+
+        for (0..6) |i| {
+            const fi: f32 = @floatFromInt(i);
+            quads[i] = .{
+                .bounds = .{ boxes_x + fi * (box_size + gap_2), boxes_y, box_size, box_size },
+                .background_color = colors[i],
+                .border_color = border_colors[i],
+                .border_widths = .{ 1, 1, 1, 1 },
+                .corner_radii = .{ 6, 6, 6, 6 }, // rounded_md
+                .content_mask = .{ 0, 0, 0, 0 },
+                .border_style = .{ 1, 0, 0, 0 }, // dashed
+            };
+        }
+
+        renderer.drawQuads(&amp;quads);
+
+        // Draw text
+        var text_width: f32 = 0;
+        for (glyph_infos) |info| {
+            text_width += @floatFromInt(info.advance);
+        }
+
+        const text_x = (500 - text_width) / 2;
+        const baseline_y = content_start_y + 16;
+
+        var sprites: [text.len]SpriteInstance = undefined;
+        var cursor_x = text_x;
+        var sprite_count: usize = 0;
+        const atlas_size_f: f32 = @floatFromInt(atlas_size);
+
+        for (glyph_infos) |info| {
+            if (info.width &gt; 0 and info.height &gt; 0) {
+                const gx = cursor_x + @as(f32, @floatFromInt(info.bearing_x));
+                const gy = baseline_y - @as(f32, @floatFromInt(info.bearing_y));
+
+                sprites[sprite_count] = .{
+                    .bounds = .{ gx, gy, @floatFromInt(info.width), @floatFromInt(info.height) },
+                    .uv_bounds = .{
+                        @as(f32, @floatFromInt(info.atlas_x)) / atlas_size_f,
+                        @as(f32, @floatFromInt(info.atlas_y)) / atlas_size_f,
+                        @as(f32, @floatFromInt(info.width)) / atlas_size_f,
+                        @as(f32, @floatFromInt(info.height)) / atlas_size_f,
+                    },
+                    .color = white_color,
+                    .content_mask = .{ 0, 0, 0, 0 },
+                };
+                sprite_count += 1;
+            }
+            cursor_x += @floatFromInt(info.advance);
+        }
+
+        if (sprite_count &gt; 0) {
+            renderer.drawSprites(sprites[0..sprite_count], atlas_srv.?, true);
+        }
+
         renderer.present(true);
     }
 }

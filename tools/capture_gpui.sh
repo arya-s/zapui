@@ -3,8 +3,6 @@
 #
 # Usage:
 #   ./capture_gpui.sh hello_world
-#
-# Requires: Zed repo at C:\src\zed
 
 set -e
 
@@ -17,63 +15,68 @@ SCREENSHOTS_DIR="$EXAMPLE_DIR/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
 
 echo "=== Capturing GPUI: $EXAMPLE ==="
-echo ""
 
-# Find Zed repo
+# Check for pre-built GPUI example
 ZED_DIR="/mnt/c/src/zed"
-if [ ! -d "$ZED_DIR" ]; then
-    echo "Zed repo not found at $ZED_DIR"
-    echo "Clone it with: git clone --depth 1 https://github.com/zed-industries/zed.git /mnt/c/src/zed"
-    exit 1
-fi
-
-# Check if the example exists
 EXAMPLE_EXE="$ZED_DIR/target/debug/examples/${EXAMPLE}.exe"
+
 if [ ! -f "$EXAMPLE_EXE" ]; then
-    echo "Building GPUI example (first time may take several minutes)..."
+    echo "Building GPUI example (may take a while first time)..."
     powershell.exe -Command "cd 'C:\src\zed'; cargo build --example $EXAMPLE -p gpui"
 fi
 
 if [ ! -f "$EXAMPLE_EXE" ]; then
-    echo "Failed to build example"
+    echo "❌ Failed to build GPUI example"
     exit 1
 fi
 
-# Copy files to temp
-WIN_TEMP="/mnt/c/temp"
-mkdir -p "$WIN_TEMP"
-cp "$EXAMPLE_EXE" "$WIN_TEMP/${EXAMPLE}_gpui.exe"
-cp "$SCRIPT_DIR/capture_window.ps1" "$WIN_TEMP/"
+# Copy to temp
+cp "$EXAMPLE_EXE" "/mnt/c/temp/${EXAMPLE}_gpui.exe"
 
-echo "Running GPUI example..."
-powershell.exe -Command "Start-Process 'C:\temp\\${EXAMPLE}_gpui.exe'"
+echo "Launching and capturing..."
+powershell.exe -Command '
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinCapture {
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
+}
+"@
 
-# Wait for window to appear
-sleep 3
+Start-Process "C:\temp\'"$EXAMPLE"'_gpui.exe"
+Start-Sleep -Seconds 3
 
-echo "Capturing window..."
-WIN_OUTPUT="C:\\temp\\gpui_screenshot.png"
+$p = Get-Process -Name "'"$EXAMPLE"'_gpui" -EA SilentlyContinue | Select -First 1
+if ($p -and $p.MainWindowHandle -ne 0) {
+    $h = $p.MainWindowHandle
+    [WinCapture]::SetForegroundWindow($h) | Out-Null
+    Start-Sleep -Milliseconds 500
+    $r = New-Object WinCapture+RECT
+    [WinCapture]::GetWindowRect($h, [ref]$r) | Out-Null
+    $w = $r.R - $r.L
+    $h = $r.B - $r.T
+    Write-Host "Window: $w x $h"
+    $bmp = New-Object Drawing.Bitmap($w, $h)
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($r.L, $r.T, 0, 0, [Drawing.Size]::new($w, $h))
+    $bmp.Save("C:\temp\gpui_capture.png", [Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose()
+    $bmp.Dispose()
+    Write-Host "Captured"
+}
 
-# The GPUI process name might not have _gpui suffix in the window
-powershell.exe -ExecutionPolicy Bypass -File "C:\\temp\\capture_window.ps1" -ProcessName "${EXAMPLE}_gpui" -OutputPath "$WIN_OUTPUT" 2>/dev/null || \
-powershell.exe -ExecutionPolicy Bypass -File "C:\\temp\\capture_window.ps1" -ProcessName "$EXAMPLE" -OutputPath "$WIN_OUTPUT" 2>/dev/null || true
+Stop-Process -Name "'"$EXAMPLE"'_gpui" -Force -EA SilentlyContinue
+'
 
-# Copy screenshot back
-if [ -f "/mnt/c/temp/gpui_screenshot.png" ]; then
-    cp "/mnt/c/temp/gpui_screenshot.png" "$SCREENSHOTS_DIR/gpui.png"
-    echo ""
-    echo "✅ Screenshot saved: $SCREENSHOTS_DIR/gpui.png"
-    ls -la "$SCREENSHOTS_DIR/gpui.png"
+if [ -f "/mnt/c/temp/gpui_capture.png" ]; then
+    cp "/mnt/c/temp/gpui_capture.png" "$SCREENSHOTS_DIR/gpui.png"
+    rm "/mnt/c/temp/gpui_capture.png"
+    echo "✅ Saved: $SCREENSHOTS_DIR/gpui.png"
 else
-    echo ""
-    echo "❌ Screenshot not found"
+    echo "❌ Screenshot failed"
+    exit 1
 fi
-
-# Kill the app
-echo "Closing GPUI window..."
-taskkill.exe /IM "${EXAMPLE}_gpui.exe" /F 2>/dev/null || true
-
-# Cleanup
-rm -f "$WIN_TEMP/${EXAMPLE}_gpui.exe" 2>/dev/null || true
-rm -f "$WIN_TEMP/capture_window.ps1" 2>/dev/null || true
-rm -f "$WIN_TEMP/gpui_screenshot.png" 2>/dev/null || true
