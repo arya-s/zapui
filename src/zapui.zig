@@ -39,6 +39,7 @@ pub const renderer = struct {
     pub const shaders = @import("renderer/shaders.zig");
     pub const atlas = @import("renderer/atlas.zig");
     pub const gl_renderer = @import("renderer/gl_renderer.zig");
+    pub const d3d11_renderer = @import("renderer/d3d11_renderer.zig");
 };
 
 // ============================================================================
