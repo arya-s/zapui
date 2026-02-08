@@ -119,57 +119,57 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the playground");
     run_step.dependOn(&run_playground.step);
 
-    // Taffy demo
-    const taffy_demo_mod = b.createModule(.{
-        .root_source_file = b.path("examples/taffy_demo.zig"),
+    // Zaffy demo
+    const zaffy_demo_mod = b.createModule(.{
+        .root_source_file = b.path("examples/zaffy_demo.zig"),
         .target = target,
         .optimize = optimize,
     });
-    taffy_demo_mod.addImport("zapui", zapui_mod);
+    zaffy_demo_mod.addImport("zapui", zapui_mod);
 
-    const taffy_demo = b.addExecutable(.{
-        .name = "taffy_demo",
-        .root_module = taffy_demo_mod,
+    const zaffy_demo = b.addExecutable(.{
+        .name = "zaffy_demo",
+        .root_module = zaffy_demo_mod,
     });
 
-    taffy_demo.linkSystemLibrary("GL");
-    taffy_demo.linkSystemLibrary("glfw");
-    taffy_demo.linkLibC();
-    taffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
-    taffy_demo.linkLibrary(hb_lib);
+    zaffy_demo.linkSystemLibrary("GL");
+    zaffy_demo.linkSystemLibrary("glfw");
+    zaffy_demo.linkLibC();
+    zaffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
+    zaffy_demo.linkLibrary(hb_lib);
 
-    b.installArtifact(taffy_demo);
+    b.installArtifact(zaffy_demo);
 
-    const run_taffy_demo = b.addRunArtifact(taffy_demo);
-    run_taffy_demo.step.dependOn(b.getInstallStep());
-    const taffy_step = b.step("taffy-demo", "Run the Taffy layout demo");
-    taffy_step.dependOn(&run_taffy_demo.step);
+    const run_zaffy_demo = b.addRunArtifact(zaffy_demo);
+    run_zaffy_demo.step.dependOn(b.getInstallStep());
+    const zaffy_step = b.step("zaffy-demo", "Run the Zaffy layout demo");
+    zaffy_step.dependOn(&run_zaffy_demo.step);
 
-    // Taffy visual demo
-    const taffy_visual_mod = b.createModule(.{
-        .root_source_file = b.path("examples/taffy_visual.zig"),
+    // Zaffy visual demo
+    const zaffy_visual_mod = b.createModule(.{
+        .root_source_file = b.path("examples/zaffy_visual.zig"),
         .target = target,
         .optimize = optimize,
     });
-    taffy_visual_mod.addImport("zapui", zapui_mod);
+    zaffy_visual_mod.addImport("zapui", zapui_mod);
 
-    const taffy_visual = b.addExecutable(.{
-        .name = "taffy_visual",
-        .root_module = taffy_visual_mod,
+    const zaffy_visual = b.addExecutable(.{
+        .name = "zaffy_visual",
+        .root_module = zaffy_visual_mod,
     });
 
-    taffy_visual.linkSystemLibrary("GL");
-    taffy_visual.linkSystemLibrary("glfw");
-    taffy_visual.linkLibC();
-    taffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
-    taffy_visual.linkLibrary(hb_lib);
+    zaffy_visual.linkSystemLibrary("GL");
+    zaffy_visual.linkSystemLibrary("glfw");
+    zaffy_visual.linkLibC();
+    zaffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
+    zaffy_visual.linkLibrary(hb_lib);
 
-    b.installArtifact(taffy_visual);
+    b.installArtifact(zaffy_visual);
 
-    const run_taffy_visual = b.addRunArtifact(taffy_visual);
-    run_taffy_visual.step.dependOn(b.getInstallStep());
-    const taffy_visual_step = b.step("taffy-visual", "Run the Taffy visual demo");
-    taffy_visual_step.dependOn(&run_taffy_visual.step);
+    const run_zaffy_visual = b.addRunArtifact(zaffy_visual);
+    run_zaffy_visual.step.dependOn(b.getInstallStep());
+    const zaffy_visual_step = b.step("zaffy-visual", "Run the Zaffy visual demo");
+    zaffy_visual_step.dependOn(&run_zaffy_visual.step);
 }
 
 /// Build HarfBuzz C++ library from source, linking against our shared FreeType

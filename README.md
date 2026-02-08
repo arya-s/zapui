@@ -12,4 +12,4 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 This project takes direct inspiration from [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), the UI framework developed by [Zed Industries](https://zed.dev/) for the Zed editor.
 
-The layout engine is a Zig port of [Taffy](https://github.com/DioxusLabs/taffy), licensed under MIT. See [src/taffy/LICENSE](src/taffy/LICENSE) for details.
+The layout engine (Zaffy) is a Zig port of [Taffy](https://github.com/DioxusLabs/taffy), licensed under MIT. See [src/zaffy/LICENSE](src/zaffy/LICENSE) for details.

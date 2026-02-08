@@ -4,7 +4,7 @@
 //! Uses zapui's unified Style struct for layout and visual properties.
 
 const std = @import("std");
-const taffy = @import("../taffy.zig");
+const zaffy = @import("../zaffy.zig");
 const scene_mod = @import("../scene.zig");
 const text_system_mod = @import("../text_system.zig");
 const geometry = @import("../geometry.zig");
@@ -68,7 +68,7 @@ pub const Div = struct {
     hitbox_id: ?usize = null,
     children: [MAX_CHILDREN]?*Div = [_]?*Div{null} ** MAX_CHILDREN,
     child_count: usize = 0,
-    node_id: ?taffy.NodeId = null,
+    node_id: ?zaffy.NodeId = null,
     
     // Hover styles (applied when hovered)
     hover_bg_val: ?Hsla = null,
@@ -376,12 +376,12 @@ pub const Div = struct {
     // Layout & Rendering
     // ========================================================================
 
-    pub fn build(self: *Self, tree: *taffy.Taffy, rem_size: Pixels) !void {
+    pub fn build(self: *Self, tree: *zaffy.Zaffy, rem_size: Pixels) !void {
         for (self.children[0..self.child_count]) |maybe_child| {
             if (maybe_child) |c| try c.build(tree, rem_size);
         }
         
-        var child_ids: [MAX_CHILDREN]taffy.NodeId = undefined;
+        var child_ids: [MAX_CHILDREN]zaffy.NodeId = undefined;
         var count: usize = 0;
         for (self.children[0..self.child_count]) |maybe_child| {
             if (maybe_child) |c| {
@@ -392,7 +392,7 @@ pub const Div = struct {
             }
         }
         
-        const ts = self.style.toTaffy(rem_size);
+        const ts = self.style.toZaffy(rem_size);
         self.node_id = if (count == 0)
             try tree.newLeaf(ts)
         else
@@ -405,7 +405,7 @@ pub const Div = struct {
         text_system: *TextSystem,
         parent_x: Pixels,
         parent_y: Pixels,
-        tree: *const taffy.Taffy,
+        tree: *const zaffy.Zaffy,
         hitbox_fn: ?*const fn (Bounds(Pixels), usize) void,
         is_hovered_fn: ?*const fn (usize) bool,
     ) void {

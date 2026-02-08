@@ -6,7 +6,7 @@ const zapui = @import("zapui");
 const GlRenderer = zapui.GlRenderer;
 const TextSystem = zapui.TextSystem;
 const Scene = zapui.Scene;
-const taffy = zapui.taffy;
+const zaffy = zapui.zaffy;
 const Bounds = zapui.Bounds;
 const Point = zapui.Point;
 const Pixels = zapui.Pixels;
@@ -362,7 +362,7 @@ fn inputField(placeholder: []const u8, value: []const u8, id: usize) *Div {
 var g_slider1_buf: [32]u8 = undefined;
 var g_slider2_buf: [32]u8 = undefined;
 
-fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: Pixels, height: Pixels) !void {
+fn buildUI(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem, width: Pixels, height: Pixels) !void {
     reset();
     resetHitboxes();
     
@@ -706,7 +706,7 @@ pub fn main() !void {
         var scene = Scene.init(allocator);
         defer scene.deinit();
 
-        var tree = taffy.Taffy.init(allocator);
+        var tree = zaffy.Zaffy.init(allocator);
         defer tree.deinit();
 
         buildUI(&tree, &scene, &text_system, width, height) catch {};

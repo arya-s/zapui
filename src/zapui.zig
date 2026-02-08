@@ -27,7 +27,7 @@ pub const ui = @import("ui.zig");
 pub const text_system = @import("text_system.zig");
 pub const elements = @import("elements.zig");
 pub const view = @import("view.zig");
-pub const taffy = @import("taffy.zig");
+pub const zaffy = @import("zaffy.zig");
 pub const window = @import("window.zig");
 
 // Renderer modules

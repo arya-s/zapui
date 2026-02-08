@@ -4,7 +4,7 @@
 
 The GPUI-compatible Div API is working with:
 - Fluent builder: `div().w(px(100)).h(px(40)).bg(color).rounded(px(8))`
-- Layout: Taffy flexbox engine ported to Zig
+- Layout: Zaffy flexbox engine (Zig port of Taffy)
 - Hover: `hover_bg()`, `hover_border_color()`, `hover_text_color()`
 - Conditionals: `when(condition, fn)`
 - Helpers: `v_flex()`, `h_flex()`, `px()`
@@ -29,7 +29,7 @@ The GPUI-compatible Div API is working with:
    - Required for intrinsic sizing and text wrapping
 
 4. **Only rebuild layout on changes**
-   - Currently rebuilds entire Taffy tree every frame
+   - Currently rebuilds entire Zaffy tree every frame
    - Should diff and only update changed nodes
    - Track dirty state per element
 
@@ -57,7 +57,7 @@ The GPUI-compatible Div API is working with:
 ### Low Priority
 
 9. **Grid layout**
-   - Taffy supports CSS Grid, we only exposed flexbox
+   - Zaffy supports CSS Grid, we only exposed flexbox
    - Add grid methods to Div API
 
 10. **Shadow/effects**
@@ -91,13 +91,13 @@ src/
     text.zig       # Text element (old API)
     button.zig     # Button element (old API)
     ...            # Other elements (old API)
-  taffy/
-    taffy.zig      # Taffy layout engine
+  zaffy/
+    zaffy.zig      # Zaffy layout engine
     flexbox.zig    # Flexbox algorithm
     tree.zig       # Layout tree
-    style.zig      # Taffy styles
-    geometry.zig   # Taffy geometry types
-  style.zig        # Unified Style struct with toTaffy()
+    style.zig      # Zaffy styles
+    geometry.zig   # Zaffy geometry types
+  style.zig        # Unified Style struct with toZaffy()
   scene.zig        # Render primitives
   renderer/        # OpenGL rendering
   text_system.zig  # Font loading and glyph rendering

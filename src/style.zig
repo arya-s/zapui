@@ -4,7 +4,7 @@
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const color = @import("color.zig");
-const taffy = @import("taffy.zig");
+const zaffy = @import("zaffy.zig");
 
 const Pixels = geometry.Pixels;
 const Point = geometry.Point;
@@ -266,8 +266,8 @@ pub const Style = struct {
         return self.justify_content orelse .flex_start;
     }
 
-    /// Convert to Taffy style for layout computation
-    pub fn toTaffy(self: Style, rem_size: Pixels) taffy.Style {
+    /// Convert to Zaffy style for layout computation
+    pub fn toZaffy(self: Style, rem_size: Pixels) zaffy.Style {
         return .{
             .display = switch (self.display) {
                 .flex => .flex,
@@ -323,34 +323,34 @@ pub const Style = struct {
             } else null,
             .flex_grow = self.flex_grow,
             .flex_shrink = self.flex_shrink,
-            .flex_basis = lengthToTaffy(self.flex_basis, rem_size),
+            .flex_basis = lengthToZaffy(self.flex_basis, rem_size),
             .size = .{
-                .width = lengthToTaffy(self.size.width, rem_size),
-                .height = lengthToTaffy(self.size.height, rem_size),
+                .width = lengthToZaffy(self.size.width, rem_size),
+                .height = lengthToZaffy(self.size.height, rem_size),
             },
             .min_size = .{
-                .width = lengthToTaffy(self.min_size.width, rem_size),
-                .height = lengthToTaffy(self.min_size.height, rem_size),
+                .width = lengthToZaffy(self.min_size.width, rem_size),
+                .height = lengthToZaffy(self.min_size.height, rem_size),
             },
             .max_size = .{
-                .width = lengthToTaffy(self.max_size.width, rem_size),
-                .height = lengthToTaffy(self.max_size.height, rem_size),
+                .width = lengthToZaffy(self.max_size.width, rem_size),
+                .height = lengthToZaffy(self.max_size.height, rem_size),
             },
             .gap = .{
-                .width = lengthToTaffyLP(self.gap.width, rem_size),
-                .height = lengthToTaffyLP(self.gap.height, rem_size),
+                .width = lengthToZaffyLP(self.gap.width, rem_size),
+                .height = lengthToZaffyLP(self.gap.height, rem_size),
             },
             .padding = .{
-                .top = lengthToTaffyLP(self.padding.top, rem_size),
-                .right = lengthToTaffyLP(self.padding.right, rem_size),
-                .bottom = lengthToTaffyLP(self.padding.bottom, rem_size),
-                .left = lengthToTaffyLP(self.padding.left, rem_size),
+                .top = lengthToZaffyLP(self.padding.top, rem_size),
+                .right = lengthToZaffyLP(self.padding.right, rem_size),
+                .bottom = lengthToZaffyLP(self.padding.bottom, rem_size),
+                .left = lengthToZaffyLP(self.padding.left, rem_size),
             },
             .margin = .{
-                .top = lengthToTaffyLPA(self.margin.top, rem_size),
-                .right = lengthToTaffyLPA(self.margin.right, rem_size),
-                .bottom = lengthToTaffyLPA(self.margin.bottom, rem_size),
-                .left = lengthToTaffyLPA(self.margin.left, rem_size),
+                .top = lengthToZaffyLPA(self.margin.top, rem_size),
+                .right = lengthToZaffyLPA(self.margin.right, rem_size),
+                .bottom = lengthToZaffyLPA(self.margin.bottom, rem_size),
+                .left = lengthToZaffyLPA(self.margin.left, rem_size),
             },
             .border = .{
                 .top = .{ .length = self.border_widths.top },
@@ -359,18 +359,18 @@ pub const Style = struct {
                 .left = .{ .length = self.border_widths.left },
             },
             .inset = .{
-                .top = optionalLengthToTaffyLPA(self.inset.top, rem_size),
-                .right = optionalLengthToTaffyLPA(self.inset.right, rem_size),
-                .bottom = optionalLengthToTaffyLPA(self.inset.bottom, rem_size),
-                .left = optionalLengthToTaffyLPA(self.inset.left, rem_size),
+                .top = optionalLengthToZaffyLPA(self.inset.top, rem_size),
+                .right = optionalLengthToZaffyLPA(self.inset.right, rem_size),
+                .bottom = optionalLengthToZaffyLPA(self.inset.bottom, rem_size),
+                .left = optionalLengthToZaffyLPA(self.inset.left, rem_size),
             },
             .aspect_ratio = self.aspect_ratio,
         };
     }
 };
 
-/// Convert zapui Length to Taffy Dimension
-fn lengthToTaffy(len: Length, rem_size: Pixels) taffy.Dimension {
+/// Convert zapui Length to Zaffy Dimension
+fn lengthToZaffy(len: Length, rem_size: Pixels) zaffy.Dimension {
     return switch (len) {
         .px => |v| .{ .length = v },
         .percent => |v| .{ .percent = v / 100.0 },
@@ -379,8 +379,8 @@ fn lengthToTaffy(len: Length, rem_size: Pixels) taffy.Dimension {
     };
 }
 
-/// Convert zapui Length to Taffy LengthPercentage
-fn lengthToTaffyLP(len: Length, rem_size: Pixels) taffy.LengthPercentage {
+/// Convert zapui Length to Zaffy LengthPercentage
+fn lengthToZaffyLP(len: Length, rem_size: Pixels) zaffy.LengthPercentage {
     return switch (len) {
         .px => |v| .{ .length = v },
         .percent => |v| .{ .percent = v / 100.0 },
@@ -389,8 +389,8 @@ fn lengthToTaffyLP(len: Length, rem_size: Pixels) taffy.LengthPercentage {
     };
 }
 
-/// Convert zapui Length to Taffy LengthPercentageAuto
-fn lengthToTaffyLPA(len: Length, rem_size: Pixels) taffy.LengthPercentageAuto {
+/// Convert zapui Length to Zaffy LengthPercentageAuto
+fn lengthToZaffyLPA(len: Length, rem_size: Pixels) zaffy.LengthPercentageAuto {
     return switch (len) {
         .px => |v| .{ .length = v },
         .percent => |v| .{ .percent = v / 100.0 },
@@ -399,10 +399,10 @@ fn lengthToTaffyLPA(len: Length, rem_size: Pixels) taffy.LengthPercentageAuto {
     };
 }
 
-/// Convert optional zapui Length to Taffy LengthPercentageAuto
-fn optionalLengthToTaffyLPA(len: ?Length, rem_size: Pixels) taffy.LengthPercentageAuto {
+/// Convert optional zapui Length to Zaffy LengthPercentageAuto
+fn optionalLengthToZaffyLPA(len: ?Length, rem_size: Pixels) zaffy.LengthPercentageAuto {
     if (len) |l| {
-        return lengthToTaffyLPA(l, rem_size);
+        return lengthToZaffyLPA(l, rem_size);
     }
     return .auto;
 }

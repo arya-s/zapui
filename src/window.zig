@@ -1,10 +1,10 @@
-//! Window - Integrates Taffy layout with rendering
+//! Window - Integrates Zaffy layout with rendering
 //!
-//! This module provides the core integration between Taffy layout and zapui rendering.
-//! Elements request layout from Taffy, then paint themselves using the computed bounds.
+//! This module provides the core integration between Zaffy layout and zapui rendering.
+//! Elements request layout from Zaffy, then paint themselves using the computed bounds.
 
 const std = @import("std");
-const taffy = @import("taffy.zig");
+const zaffy = @import("zaffy.zig");
 const scene_mod = @import("scene.zig");
 const geometry = @import("geometry.zig");
 const color_mod = @import("color.zig");
@@ -18,12 +18,12 @@ const Size = geometry.Size;
 const Pixels = geometry.Pixels;
 const Hsla = color_mod.Hsla;
 
-/// Layout ID - references a node in the Taffy tree
-pub const LayoutId = taffy.NodeId;
+/// Layout ID - references a node in the Zaffy tree
+pub const LayoutId = zaffy.NodeId;
 
 /// Available space for layout  
-pub const AvailableSpace = taffy.AvailableSpace;
-pub const TaffySize = taffy.Size;
+pub const AvailableSpace = zaffy.AvailableSpace;
+pub const ZaffySize = zaffy.Size;
 
 /// The Window context passed to elements during layout and painting
 pub const Window = struct {
@@ -55,19 +55,19 @@ pub const Window = struct {
     /// Request layout for a styled element with children
     pub fn requestLayout(
         self: *Window,
-        style: taffy.Style,
+        style: zaffy.Style,
         children: []const LayoutId,
     ) !LayoutId {
         return self.layout_engine.requestLayout(style, children);
     }
     
     /// Request layout for a leaf element (no children)
-    pub fn requestLeafLayout(self: *Window, style: taffy.Style) !LayoutId {
+    pub fn requestLeafLayout(self: *Window, style: zaffy.Style) !LayoutId {
         return self.layout_engine.requestLayout(style, &.{});
     }
     
     /// Compute layout for the entire tree
-    pub fn computeLayout(self: *Window, root: LayoutId, available_space: TaffySize(AvailableSpace)) void {
+    pub fn computeLayout(self: *Window, root: LayoutId, available_space: ZaffySize(AvailableSpace)) void {
         self.layout_engine.computeLayout(root, available_space);
     }
     
@@ -137,13 +137,13 @@ pub const Hitbox = struct {
     is_opaque: bool,
 };
 
-/// Layout engine wrapping Taffy
+/// Layout engine wrapping Zaffy
 pub const LayoutEngine = struct {
-    tree: taffy.Taffy,
+    tree: zaffy.Zaffy,
     
     pub fn init(allocator: Allocator) LayoutEngine {
         return .{
-            .tree = taffy.Taffy.init(allocator),
+            .tree = zaffy.Zaffy.init(allocator),
         };
     }
     
@@ -155,7 +155,7 @@ pub const LayoutEngine = struct {
         self.tree.clear();
     }
     
-    pub fn requestLayout(self: *LayoutEngine, style: taffy.Style, children: []const LayoutId) !LayoutId {
+    pub fn requestLayout(self: *LayoutEngine, style: zaffy.Style, children: []const LayoutId) !LayoutId {
         if (children.len == 0) {
             return try self.tree.newLeaf(style);
         } else {
@@ -163,7 +163,7 @@ pub const LayoutEngine = struct {
         }
     }
     
-    pub fn computeLayout(self: *LayoutEngine, root: LayoutId, available_space: TaffySize(AvailableSpace)) void {
+    pub fn computeLayout(self: *LayoutEngine, root: LayoutId, available_space: ZaffySize(AvailableSpace)) void {
         self.tree.computeLayout(root, available_space);
     }
     
