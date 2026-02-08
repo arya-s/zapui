@@ -79,6 +79,12 @@ pub const Face = struct {
         return intToError(c.FT_Select_Size(self.handle, idx));
     }
 
+    /// Set the character pixel sizes. This is useful when you want to
+    /// specify sizes in pixels rather than points.
+    pub fn setPixelSizes(self: Face, pixel_width: u32, pixel_height: u32) Error!void {
+        return intToError(c.FT_Set_Pixel_Sizes(self.handle, pixel_width, pixel_height));
+    }
+
     /// Return the glyph index of a given character code. This function uses
     /// the currently selected charmap to do the mapping.
     pub fn getCharIndex(self: Face, char: u32) ?u32 {

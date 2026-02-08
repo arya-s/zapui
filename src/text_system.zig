@@ -1,10 +1,11 @@
-//! Text rendering system for zapui using stb_truetype.
+//! Text rendering system for zapui using FreeType.
 //! Handles font loading, glyph rasterization, and text shaping.
 
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const color = @import("color.zig");
 const atlas_mod = @import("renderer/atlas.zig");
+const freetype = @import("freetype");
 
 const Allocator = std.mem.Allocator;
 const Pixels = geometry.Pixels;
@@ -15,15 +16,13 @@ const Atlas = atlas_mod.Atlas;
 const GlAtlas = atlas_mod.GlAtlas;
 const AtlasTile = atlas_mod.AtlasTile;
 
-// stb_truetype C bindings
-const stb = @cImport({
-    @cInclude("vendor/stb_truetype.h");
-});
+const FT_Library = freetype.Library;
+const FT_Face = freetype.Face;
 
 /// Font identifier
 pub const FontId = u32;
 
-/// Glyph identifier (codepoint)
+/// Glyph identifier (glyph index, not codepoint)
 pub const GlyphId = u32;
 
 /// Font weight
@@ -122,26 +121,32 @@ const CachedGlyph = struct {
 /// Internal font data
 const FontData = struct {
     data: []const u8, // Raw TTF data (must stay alive)
-    info: stb.stbtt_fontinfo,
+    face: FT_Face,
     owned: bool, // Whether we own the data buffer
+
+    /// Cached metrics for different sizes (size_x10 -> metrics)
+    cached_metrics: std.AutoHashMapUnmanaged(u32, FontMetrics) = .{},
 };
 
-/// Text rendering system
+/// Text rendering system using FreeType
 pub const TextSystem = struct {
     allocator: Allocator,
+    ft_lib: FT_Library,
     fonts: std.ArrayListUnmanaged(FontData),
     glyph_cache: std.AutoHashMapUnmanaged(GlyphCacheKey, CachedGlyph),
     atlas: ?*GlAtlas,
     temp_bitmap: []u8,
     temp_bitmap_size: usize,
 
-    const TEMP_BITMAP_SIZE = 256 * 256;
+    const TEMP_BITMAP_SIZE = 512 * 512; // Larger buffer for FreeType
 
-    pub fn init(allocator: Allocator) TextSystem {
-        const temp = allocator.alloc(u8, TEMP_BITMAP_SIZE) catch @panic("OOM");
+    pub fn init(allocator: Allocator) !TextSystem {
+        const ft_lib = FT_Library.init() catch return error.FreeTypeInitFailed;
+        const temp = try allocator.alloc(u8, TEMP_BITMAP_SIZE);
         return .{
             .allocator = allocator,
-            .fonts = .{ .items = &.{}, .capacity = 0 },
+            .ft_lib = ft_lib,
+            .fonts = .{},
             .glyph_cache = .{},
             .atlas = null,
             .temp_bitmap = temp,
@@ -150,7 +155,9 @@ pub const TextSystem = struct {
     }
 
     pub fn deinit(self: *TextSystem) void {
-        for (self.fonts.items) |font| {
+        for (self.fonts.items) |*font| {
+            font.face.deinit();
+            font.cached_metrics.deinit(self.allocator);
             if (font.owned) {
                 self.allocator.free(font.data);
             }
@@ -158,6 +165,7 @@ pub const TextSystem = struct {
         self.fonts.deinit(self.allocator);
         self.glyph_cache.deinit(self.allocator);
         self.allocator.free(self.temp_bitmap);
+        self.ft_lib.deinit();
     }
 
     /// Set the atlas for glyph caching
@@ -180,58 +188,82 @@ pub const TextSystem = struct {
     }
 
     fn loadFontData(self: *TextSystem, data: []const u8, owned: bool) !FontId {
-        var font_data = FontData{
-            .data = data,
-            .info = undefined,
-            .owned = owned,
-        };
-
-        const result = stb.stbtt_InitFont(&font_data.info, data.ptr, 0);
-        if (result == 0) {
+        const face = self.ft_lib.initMemoryFace(data, 0) catch {
             if (owned) self.allocator.free(data);
             return error.InvalidFont;
-        }
+        };
+        errdefer face.deinit();
+
+        // Select Unicode charmap
+        face.selectCharmap(.unicode) catch {
+            // Font might not have Unicode charmap, continue anyway
+        };
 
         const id: FontId = @intCast(self.fonts.items.len);
-        try self.fonts.append(self.allocator, font_data);
+        try self.fonts.append(self.allocator, .{
+            .data = data,
+            .face = face,
+            .owned = owned,
+        });
         return id;
     }
 
     /// Get font metrics at a specific size
-    pub fn getFontMetrics(self: *const TextSystem, font_id: FontId, size: Pixels) FontMetrics {
+    pub fn getFontMetrics(self: *TextSystem, font_id: FontId, size: Pixels) FontMetrics {
         if (font_id >= self.fonts.items.len) {
             return FontMetrics{ .ascent = size, .descent = 0, .line_gap = 0, .line_height = size };
         }
 
-        const font = &self.fonts.items[font_id];
-        const scale = stb.stbtt_ScaleForPixelHeight(&font.info, size);
+        const size_x10: u32 = @intFromFloat(size * 10);
+        var font = &self.fonts.items[font_id];
 
-        var ascent: c_int = 0;
-        var descent: c_int = 0;
-        var line_gap: c_int = 0;
-        stb.stbtt_GetFontVMetrics(&font.info, &ascent, &descent, &line_gap);
+        // Check cache
+        if (font.cached_metrics.get(size_x10)) |cached| {
+            return cached;
+        }
 
-        const asc: Pixels = @as(Pixels, @floatFromInt(ascent)) * scale;
-        const desc: Pixels = @as(Pixels, @floatFromInt(descent)) * scale;
-        const gap: Pixels = @as(Pixels, @floatFromInt(line_gap)) * scale;
-
-        return FontMetrics{
-            .ascent = asc,
-            .descent = desc,
-            .line_gap = gap,
-            .line_height = asc - desc + gap,
+        // Set pixel size
+        font.face.setPixelSizes(0, @intFromFloat(size)) catch {
+            return FontMetrics{ .ascent = size, .descent = 0, .line_gap = 0, .line_height = size };
         };
+
+        // Get metrics from FreeType face
+        const face_handle = font.face.handle;
+        const size_metrics = face_handle.*.size.*.metrics;
+
+        // FreeType uses 26.6 fixed-point format (divide by 64)
+        const ascent: Pixels = @as(Pixels, @floatFromInt(size_metrics.ascender)) / 64.0;
+        const descent: Pixels = @as(Pixels, @floatFromInt(size_metrics.descender)) / 64.0;
+        const height: Pixels = @as(Pixels, @floatFromInt(size_metrics.height)) / 64.0;
+
+        // Line gap is height - (ascent - descent)
+        const line_gap = height - (ascent - descent);
+
+        const metrics = FontMetrics{
+            .ascent = ascent,
+            .descent = descent,
+            .line_gap = line_gap,
+            .line_height = height,
+        };
+
+        // Cache for next time
+        font.cached_metrics.put(self.allocator, size_x10, metrics) catch {};
+
+        return metrics;
     }
 
     /// Shape text into glyphs (basic left-to-right shaping)
+    /// Note: This is simple codepoint-by-codepoint shaping. Phase 3 will add HarfBuzz.
     pub fn shapeText(self: *TextSystem, text: []const u8, font_id: FontId, size: Pixels) !ShapedRun {
         if (font_id >= self.fonts.items.len) {
             return error.InvalidFont;
         }
 
-        const font = &self.fonts.items[font_id];
-        const scale = stb.stbtt_ScaleForPixelHeight(&font.info, size);
+        var font = &self.fonts.items[font_id];
         const metrics = self.getFontMetrics(font_id, size);
+
+        // Set pixel size for this shaping operation
+        font.face.setPixelSizes(0, @intFromFloat(size)) catch return error.InvalidFont;
 
         // Count codepoints
         var codepoint_count: usize = 0;
@@ -242,41 +274,72 @@ pub const TextSystem = struct {
 
         // Allocate glyphs
         const glyphs = try self.allocator.alloc(ShapedGlyph, codepoint_count);
+        errdefer self.allocator.free(glyphs);
 
         // Shape glyphs
         var x: Pixels = 0;
         var i: usize = 0;
         iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
-        var prev_codepoint: ?u32 = null;
+        var prev_glyph_index: ?u32 = null;
+
+        const face_handle = font.face.handle;
+        const has_kerning = (face_handle.*.face_flags & 0x40) != 0; // FT_FACE_FLAG_KERNING
 
         while (iter.nextCodepoint()) |codepoint| {
-            const glyph_index = stb.stbtt_FindGlyphIndex(&font.info, @intCast(codepoint));
+            const glyph_index = font.face.getCharIndex(codepoint) orelse 0;
 
-            // Get advance width
-            var advance_width: c_int = 0;
-            var left_bearing: c_int = 0;
-            stb.stbtt_GetGlyphHMetrics(&font.info, glyph_index, &advance_width, &left_bearing);
+            // Load glyph to get metrics
+            font.face.loadGlyph(glyph_index, .{}) catch {
+                // Skip glyph if loading fails
+                glyphs[i] = .{
+                    .glyph_id = glyph_index,
+                    .codepoint = codepoint,
+                    .x_offset = 0,
+                    .y_offset = 0,
+                    .x_advance = 0,
+                    .y_advance = 0,
+                };
+                i += 1;
+                prev_glyph_index = glyph_index;
+                continue;
+            };
 
-            // Apply kerning
+            const glyph_slot = face_handle.*.glyph;
+            const glyph_metrics = glyph_slot.*.metrics;
+
+            // FreeType advance is in 26.6 fixed-point
+            const x_advance: Pixels = @as(Pixels, @floatFromInt(glyph_slot.*.advance.x)) / 64.0;
+            const left_bearing: Pixels = @as(Pixels, @floatFromInt(glyph_metrics.horiBearingX)) / 64.0;
+
+            // Apply kerning if available
             var kern: Pixels = 0;
-            if (prev_codepoint) |prev| {
-                const kern_advance = stb.stbtt_GetCodepointKernAdvance(&font.info, @intCast(prev), @intCast(codepoint));
-                kern = @as(Pixels, @floatFromInt(kern_advance)) * scale;
+            if (has_kerning) {
+                if (prev_glyph_index) |prev| {
+                    var delta: freetype.c.FT_Vector = undefined;
+                    const kern_result = freetype.c.FT_Get_Kerning(
+                        face_handle,
+                        prev,
+                        glyph_index,
+                        0, // FT_KERNING_DEFAULT
+                        &delta,
+                    );
+                    if (kern_result == 0) {
+                        kern = @as(Pixels, @floatFromInt(delta.x)) / 64.0;
+                    }
+                }
             }
 
-            const x_advance = @as(Pixels, @floatFromInt(advance_width)) * scale;
-
             glyphs[i] = .{
-                .glyph_id = @intCast(glyph_index),
+                .glyph_id = glyph_index,
                 .codepoint = codepoint,
-                .x_offset = @as(Pixels, @floatFromInt(left_bearing)) * scale,
+                .x_offset = left_bearing,
                 .y_offset = 0,
                 .x_advance = x_advance,
                 .y_advance = 0,
             };
 
             x += kern + x_advance;
-            prev_codepoint = codepoint;
+            prev_glyph_index = glyph_index;
             i += 1;
         }
 
@@ -310,51 +373,53 @@ pub const TextSystem = struct {
         if (font_id >= self.fonts.items.len) return null;
         const atlas = self.atlas orelse return null;
 
-        const font = &self.fonts.items[font_id];
-        const scale = stb.stbtt_ScaleForPixelHeight(&font.info, size);
+        var font = &self.fonts.items[font_id];
 
-        // Get glyph bounds
-        var x0: c_int = 0;
-        var y0: c_int = 0;
-        var x1: c_int = 0;
-        var y1: c_int = 0;
-        stb.stbtt_GetGlyphBitmapBox(&font.info, @intCast(glyph_id), scale, scale, &x0, &y0, &x1, &y1);
+        // Set pixel size
+        font.face.setPixelSizes(0, @intFromFloat(size)) catch return null;
 
-        const glyph_w: u32 = @intCast(@max(0, x1 - x0));
-        const glyph_h: u32 = @intCast(@max(0, y1 - y0));
+        // Load glyph with rendering
+        font.face.loadGlyph(glyph_id, .{ .render = true }) catch return null;
+
+        const face_handle = font.face.handle;
+        const glyph_slot = face_handle.*.glyph;
+        const bitmap = glyph_slot.*.bitmap;
+        const glyph_metrics = glyph_slot.*.metrics;
+
+        const glyph_w: u32 = bitmap.width;
+        const glyph_h: u32 = bitmap.rows;
+
+        // Calculate bearing for positioning
+        const bearing_x: Pixels = @as(Pixels, @floatFromInt(glyph_metrics.horiBearingX)) / 64.0;
+        const bearing_y: Pixels = @as(Pixels, @floatFromInt(glyph_metrics.horiBearingY)) / 64.0;
+        const advance: Pixels = @as(Pixels, @floatFromInt(glyph_slot.*.advance.x)) / 64.0;
 
         if (glyph_w == 0 or glyph_h == 0) {
             // Space or empty glyph
             const cached = CachedGlyph{
                 .atlas_bounds = Bounds(f32).zero,
-                .pixel_bounds = Bounds(Pixels).fromXYWH(
-                    @floatFromInt(x0),
-                    @floatFromInt(y0),
-                    0,
-                    0,
-                ),
-                .advance = 0,
+                .pixel_bounds = Bounds(Pixels).fromXYWH(bearing_x, -bearing_y, 0, 0),
+                .advance = advance,
             };
             self.glyph_cache.put(self.allocator, cache_key, cached) catch {};
             return cached;
         }
 
-        // Rasterize to temp buffer
+        // Check if bitmap fits in temp buffer
         if (glyph_w * glyph_h > self.temp_bitmap_size) {
             return null; // Glyph too large
         }
 
-        @memset(self.temp_bitmap, 0);
-        stb.stbtt_MakeGlyphBitmap(
-            &font.info,
-            self.temp_bitmap.ptr,
-            @intCast(glyph_w),
-            @intCast(glyph_h),
-            @intCast(glyph_w),
-            scale,
-            scale,
-            @intCast(glyph_id),
-        );
+        // Copy bitmap data (FreeType bitmap may have padding)
+        const pitch: usize = @intCast(@abs(bitmap.pitch));
+        for (0..glyph_h) |row| {
+            const src_offset = row * pitch;
+            const dst_offset = row * glyph_w;
+            @memcpy(
+                self.temp_bitmap[dst_offset..][0..glyph_w],
+                bitmap.buffer[src_offset..][0..glyph_w],
+            );
+        }
 
         // Allocate in atlas
         const tile_opt = atlas.allocate(.{ .width = glyph_w, .height = glyph_h }) catch return null;
@@ -366,12 +431,12 @@ pub const TextSystem = struct {
         const cached = CachedGlyph{
             .atlas_bounds = tile.uv_bounds,
             .pixel_bounds = Bounds(Pixels).fromXYWH(
-                @floatFromInt(x0),
-                @floatFromInt(y0),
+                bearing_x,
+                -bearing_y, // Y is inverted (bearing_y is distance from baseline to top)
                 @floatFromInt(glyph_w),
                 @floatFromInt(glyph_h),
             ),
-            .advance = 0,
+            .advance = advance,
         };
 
         self.glyph_cache.put(self.allocator, cache_key, cached) catch {};
@@ -401,7 +466,7 @@ pub const TextSystem = struct {
                 if (cached.pixel_bounds.size.width > 0 and cached.pixel_bounds.size.height > 0) {
                     try scene.insertMonoSprite(.{
                         .bounds = Bounds(Pixels).fromXYWH(
-                            glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x,
+                            glyph_x + cached.pixel_bounds.origin.x,
                             y + cached.pixel_bounds.origin.y,
                             cached.pixel_bounds.size.width,
                             cached.pixel_bounds.size.height,
@@ -415,29 +480,50 @@ pub const TextSystem = struct {
         }
     }
 
-    /// Measure text width without shaping
+    /// Measure text width
     pub fn measureText(self: *TextSystem, text: []const u8, font_id: FontId, size: Pixels) Pixels {
         if (font_id >= self.fonts.items.len) return 0;
 
-        const font = &self.fonts.items[font_id];
-        const scale = stb.stbtt_ScaleForPixelHeight(&font.info, size);
+        var font = &self.fonts.items[font_id];
+
+        // Set pixel size
+        font.face.setPixelSizes(0, @intFromFloat(size)) catch return 0;
 
         var width: Pixels = 0;
         var iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
-        var prev_codepoint: ?u32 = null;
+        var prev_glyph_index: ?u32 = null;
+
+        const face_handle = font.face.handle;
+        const has_kerning = (face_handle.*.face_flags & 0x40) != 0;
 
         while (iter.nextCodepoint()) |codepoint| {
-            var advance_width: c_int = 0;
-            var left_bearing: c_int = 0;
-            stb.stbtt_GetCodepointHMetrics(&font.info, @intCast(codepoint), &advance_width, &left_bearing);
+            const glyph_index = font.face.getCharIndex(codepoint) orelse 0;
 
-            if (prev_codepoint) |prev| {
-                const kern = stb.stbtt_GetCodepointKernAdvance(&font.info, @intCast(prev), @intCast(codepoint));
-                width += @as(Pixels, @floatFromInt(kern)) * scale;
+            // Load glyph to get advance
+            font.face.loadGlyph(glyph_index, .{}) catch continue;
+
+            const glyph_slot = face_handle.*.glyph;
+            const x_advance: Pixels = @as(Pixels, @floatFromInt(glyph_slot.*.advance.x)) / 64.0;
+
+            // Apply kerning
+            if (has_kerning) {
+                if (prev_glyph_index) |prev| {
+                    var delta: freetype.c.FT_Vector = undefined;
+                    const kern_result = freetype.c.FT_Get_Kerning(
+                        face_handle,
+                        prev,
+                        glyph_index,
+                        0,
+                        &delta,
+                    );
+                    if (kern_result == 0) {
+                        width += @as(Pixels, @floatFromInt(delta.x)) / 64.0;
+                    }
+                }
             }
 
-            width += @as(Pixels, @floatFromInt(advance_width)) * scale;
-            prev_codepoint = codepoint;
+            width += x_advance;
+            prev_glyph_index = glyph_index;
         }
 
         return width;
@@ -450,7 +536,7 @@ pub const TextSystem = struct {
 
 test "TextSystem basic init" {
     const allocator = std.testing.allocator;
-    var ts = TextSystem.init(allocator);
+    var ts = try TextSystem.init(allocator);
     defer ts.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), ts.fonts.items.len);

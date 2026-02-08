@@ -27,14 +27,6 @@ pub fn build(b: *std.Build) void {
 
     // Add system library paths for OpenGL headers
     zapui_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
-    // Add vendor directory for stb headers
-    zapui_mod.addIncludePath(b.path("src"));
-
-    // Compile stb_truetype (kept temporarily during migration)
-    zapui_mod.addCSourceFile(.{
-        .file = b.path("src/vendor/stb_truetype.c"),
-        .flags = &.{"-std=c99"},
-    });
     zapui_mod.link_libc = true;
 
     // Library artifact (for linking)
@@ -60,11 +52,6 @@ pub fn build(b: *std.Build) void {
         },
     });
     test_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
-    test_mod.addIncludePath(b.path("src"));
-    test_mod.addCSourceFile(.{
-        .file = b.path("src/vendor/stb_truetype.c"),
-        .flags = &.{"-std=c99"},
-    });
     test_mod.link_libc = true;
 
     // Unit tests

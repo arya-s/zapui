@@ -318,9 +318,15 @@ pub fn main() !void {
     var renderer = try GlRenderer.init(allocator);
     defer renderer.deinit();
 
-    var text_system = TextSystem.init(allocator);
+    var text_system = TextSystem.init(allocator) catch {
+        std.debug.print("Failed to initialize text system\n", .{});
+        return;
+    };
     defer text_system.deinit();
-    _ = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch return;
+    _ = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch {
+        std.debug.print("Failed to load font\n", .{});
+        return;
+    };
     text_system.setAtlas(renderer.getGlyphAtlas());
 
     while (glfw.glfwWindowShouldClose(win) == 0) {
