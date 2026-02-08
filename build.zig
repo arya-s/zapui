@@ -4,11 +4,25 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Get FreeType and HarfBuzz dependencies
+    const freetype_dep = b.dependency("freetype", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const harfbuzz_dep = b.dependency("harfbuzz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Main zapui library module
     const zapui_mod = b.addModule("zapui", .{
         .root_source_file = b.path("src/zapui.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "freetype", .module = freetype_dep.module("freetype") },
+            .{ .name = "harfbuzz", .module = harfbuzz_dep.module("harfbuzz") },
+        },
     });
 
     // Add system library paths for OpenGL headers
@@ -16,7 +30,7 @@ pub fn build(b: *std.Build) void {
     // Add vendor directory for stb headers
     zapui_mod.addIncludePath(b.path("src"));
 
-    // Compile stb_truetype
+    // Compile stb_truetype (kept temporarily during migration)
     zapui_mod.addCSourceFile(.{
         .file = b.path("src/vendor/stb_truetype.c"),
         .flags = &.{"-std=c99"},
@@ -28,6 +42,11 @@ pub fn build(b: *std.Build) void {
         .name = "zapui",
         .root_module = zapui_mod,
     });
+
+    // Link FreeType and HarfBuzz
+    lib.linkLibrary(freetype_dep.artifact("freetype"));
+    lib.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+
     b.installArtifact(lib);
 
     // Create a module for tests (without GL - just core types)
@@ -35,6 +54,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/zapui.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "freetype", .module = freetype_dep.module("freetype") },
+            .{ .name = "harfbuzz", .module = harfbuzz_dep.module("harfbuzz") },
+        },
     });
     test_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     test_mod.addIncludePath(b.path("src"));
@@ -49,6 +72,8 @@ pub fn build(b: *std.Build) void {
         .root_module = test_mod,
     });
     lib_unit_tests.linkLibC();
+    lib_unit_tests.linkLibrary(freetype_dep.artifact("freetype"));
+    lib_unit_tests.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
@@ -71,6 +96,8 @@ pub fn build(b: *std.Build) void {
     playground.linkSystemLibrary("GL");
     playground.linkSystemLibrary("glfw");
     playground.linkLibC();
+    playground.linkLibrary(freetype_dep.artifact("freetype"));
+    playground.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
 
     b.installArtifact(playground);
 
@@ -98,6 +125,8 @@ pub fn build(b: *std.Build) void {
     taffy_demo.linkSystemLibrary("GL");
     taffy_demo.linkSystemLibrary("glfw");
     taffy_demo.linkLibC();
+    taffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
+    taffy_demo.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
 
     b.installArtifact(taffy_demo);
 
@@ -122,6 +151,8 @@ pub fn build(b: *std.Build) void {
     taffy_visual.linkSystemLibrary("GL");
     taffy_visual.linkSystemLibrary("glfw");
     taffy_visual.linkLibC();
+    taffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
+    taffy_visual.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
 
     b.installArtifact(taffy_visual);
 

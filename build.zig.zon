@@ -9,5 +9,10 @@
         "src",
         "playground",
         "examples",
+        "pkg",
+    },
+    .dependencies = .{
+        .freetype = .{ .path = "pkg/freetype" },
+        .harfbuzz = .{ .path = "pkg/harfbuzz" },
     },
 }

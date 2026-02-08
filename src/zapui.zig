@@ -6,6 +6,10 @@
 
 const std = @import("std");
 
+// Font backend modules (FreeType + HarfBuzz)
+pub const freetype = @import("freetype");
+pub const harfbuzz = @import("harfbuzz");
+
 // ============================================================================
 // Core modules
 // ============================================================================
