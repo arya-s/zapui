@@ -65,11 +65,10 @@ This creates:
 
 ```
 examples/gpui_ports/<name>/
-├── <name>_win32.zig     # Main implementation (Win32 + D3D11) - DEFAULT
-├── <name>.zig           # Optional: OpenGL version (cross-platform)
-├── <name>.rs            # Original GPUI source (reference)
-├── REPORT.md            # Comparison report
-├── LiberationSans-Regular.ttf  # Embedded font for D3D11
+├── <name>.zig                  # Win32 + D3D11 implementation
+├── <name>.rs                   # Original GPUI source (reference)
+├── REPORT.md                   # Comparison report
+├── LiberationSans-Regular.ttf  # Embedded font
 └── screenshots/
     ├── zapui.png        # ZapUI screenshot
     ├── gpui.png         # GPUI screenshot
@@ -77,13 +76,9 @@ examples/gpui_ports/<name>/
     └── toggle.gif       # Animated comparison
 ```
 
-## Default: Win32 + D3D11
+## Renderer: Win32 + D3D11
 
-GPUI ports use native Win32 windowing and D3D11 rendering by default:
-- `hello_world.exe` = Win32 + D3D11 (built from `hello_world_win32.zig`)
-- `hello_world_gl.exe` = OpenGL version (built from `hello_world.zig`)
-
-The Win32+D3D11 version:
+All GPUI ports use native Win32 windowing and D3D11 rendering:
 - Uses `zapui.platform.Win32Backend` for windowing
 - Uses `zapui.renderer.d3d11_renderer.D3D11Renderer` for rendering
 - Embeds fonts with `@embedFile("LiberationSans-Regular.ttf")`
@@ -107,4 +102,3 @@ The Win32+D3D11 version:
 | `make capture-both EXAMPLE=<name>` | Capture both screenshots |
 | `make compare EXAMPLE=<name>` | Generate diff and toggle images |
 | `make hello-world` | Build hello_world (Win32 + D3D11) |
-| `make hello-world-gl` | Build hello_world (OpenGL) |

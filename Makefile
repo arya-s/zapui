@@ -39,10 +39,6 @@ zaffy-visual:
 hello-world:
 	zig build hello-world -Dtarget=x86_64-windows
 
-# Build Hello World OpenGL version (cross-platform)
-hello-world-gl:
-	zig build hello-world-gl
-
 # Build all examples for Windows (cross-compile from Linux/WSL)
 # Uses 'zig build' without run steps to just compile
 windows:
@@ -106,7 +102,6 @@ help:
 	@echo "  make playground     - Alias for 'make run'"
 	@echo "  make run-release    - Run playground (release build)"
 	@echo "  make hello-world    - Build Hello World (Win32 + D3D11)"
-	@echo "  make hello-world-gl - Build Hello World (OpenGL)"
 	@echo "  make zaffy-demo     - Run Zaffy console demo"
 	@echo "  make zaffy-visual   - Run Zaffy visual demo"
 	@echo ""

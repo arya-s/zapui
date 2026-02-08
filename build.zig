@@ -135,9 +135,9 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the playground");
     run_step.dependOn(&run_playground.step);
 
-    // Hello World example (GPUI port) - Win32 + D3D11 (default for Windows)
+    // Hello World example (GPUI port) - Win32 + D3D11
     const hello_world_mod = b.createModule(.{
-        .root_source_file = b.path("examples/gpui_ports/hello_world/hello_world_win32.zig"),
+        .root_source_file = b.path("examples/gpui_ports/hello_world/hello_world.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -157,31 +157,6 @@ pub fn build(b: *std.Build) void {
 
     const hello_world_step = b.step("hello-world", "Build Hello World (Win32 + D3D11)");
     hello_world_step.dependOn(b.getInstallStep());
-
-    // Hello World OpenGL version (cross-platform, for comparison)
-    const hello_world_gl_mod = b.createModule(.{
-        .root_source_file = b.path("examples/gpui_ports/hello_world/hello_world.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    hello_world_gl_mod.addImport("zapui", zapui_mod);
-    hello_world_gl_mod.addImport("zglfw", zglfw_dep.module("root"));
-    hello_world_gl_mod.addImport("zopengl", zopengl_dep.module("root"));
-
-    const hello_world_gl = b.addExecutable(.{
-        .name = "hello_world_gl",
-        .root_module = hello_world_gl_mod,
-    });
-
-    hello_world_gl.linkLibrary(zglfw_dep.artifact("glfw"));
-    hello_world_gl.linkLibC();
-    hello_world_gl.linkLibrary(freetype_dep.artifact("freetype"));
-    hello_world_gl.linkLibrary(hb_lib);
-
-    b.installArtifact(hello_world_gl);
-
-    const hello_world_gl_step = b.step("hello-world-gl", "Build Hello World (OpenGL, cross-platform)");
-    hello_world_gl_step.dependOn(b.getInstallStep());
 
     // Zaffy demo
     const zaffy_demo_mod = b.createModule(.{
