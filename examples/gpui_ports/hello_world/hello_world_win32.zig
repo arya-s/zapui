@@ -200,14 +200,16 @@ pub fn main() !void {
 
         // Render frame
         renderer.beginFrame();
-        renderer.clear(0.1, 0.1, 0.1, 1.0); // Dark gray background
+        // No separate clear - the root div fills the entire window like GPUI
+        renderer.clear(0.0, 0.0, 0.0, 1.0); // Black (won't be visible - root div covers all)
         
-        // Draw the main container (centered gray box with blue border)
-        const container_size: f32 = 400;
-        const container_x = (@as(f32, @floatFromInt(renderer.width)) - container_size) / 2;
-        const container_y = (@as(f32, @floatFromInt(renderer.height)) - container_size) / 2;
+        // Root div is full window size (500x500) matching GPUI's .size(px(500))
+        const container_size: f32 = 500;
+        const container_x: f32 = 0;
+        const container_y: f32 = 0;
         
         // Draw colored boxes like in hello_world
+        // size_8 = 32px (2rem), gap_2 = 8px (0.5rem)
         const box_size: f32 = 32;
         const gap: f32 = 8;
         const total_width = 6 * box_size + 5 * gap;
