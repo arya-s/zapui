@@ -379,6 +379,12 @@ pub const Div = struct {
     pub fn border_b(self: *Self, width: Px) *Self { self.style.border_widths.bottom = width.value; return self; }
     pub fn border_l(self: *Self, width: Px) *Self { self.style.border_widths.left = width.value; return self; }
     pub fn border_color(self: *Self, color: Hsla) *Self { self.style.border_color = color; return self; }
+    
+    /// Set border style to dashed (matches GPUI's border_dashed())
+    pub fn border_dashed(self: *Self) *Self { self.style.border_style = .dashed; return self; }
+    
+    /// Set border style to solid (default)
+    pub fn border_solid(self: *Self) *Self { self.style.border_style = .solid; return self; }
 
     pub fn rounded(self: *Self, radius: Px) *Self { self.style.corner_radii = Corners(Pixels).all(radius.value); return self; }
     pub fn rounded_sm(self: *Self) *Self { self.style.corner_radii = Corners(Pixels).all(2); return self; }
@@ -610,6 +616,10 @@ pub const Div = struct {
                 .background = effective_style.background,
                 .border_color = effective_style.border_color,
                 .border_widths = self.style.border_widths,
+                .border_style = switch (effective_style.border_style) {
+                    .solid => .solid,
+                    .dashed => .dashed,
+                },
                 .corner_radii = self.style.corner_radii,
             }) catch {};
         }

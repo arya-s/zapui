@@ -8,6 +8,7 @@ in vec4 v_border_widths;
 in vec4 v_corner_radii;
 in vec4 v_content_mask;
 in vec2 v_pixel_position;
+flat in float v_border_style;  // 0 = solid, 1 = dashed
 
 out vec4 frag_color;
 
@@ -81,6 +82,58 @@ void main() {
     // Determine if we're in border or fill area
     float border_factor = outer_alpha * (1.0 - inner_alpha);
     float fill_factor = outer_alpha * inner_alpha;
+    
+    // Handle dashed border style (matching GPUI's approach)
+    if (v_border_style > 0.5 && border_factor > 0.0) {
+        // GPUI uses: (2 * border_width) dash, (1 * border_width) gap
+        float avg_border_width = (bw.x + bw.y + bw.z + bw.w) * 0.25;
+        avg_border_width = max(avg_border_width, 1.0);
+        
+        float dash_length = 2.0 * avg_border_width;
+        float gap_length = 1.0 * avg_border_width;
+        float pattern_length = dash_length + gap_length;
+        
+        // Calculate position along perimeter
+        // For each edge, we track x or y position
+        vec2 abs_center = abs(center_pos);
+        
+        float perimeter_pos;
+        
+        // Determine which edge we're on and calculate position
+        // Top edge: y near -half_size.y
+        // Right edge: x near half_size.x  
+        // Bottom edge: y near half_size.y
+        // Left edge: x near -half_size.x
+        
+        float edge_threshold_x = half_size.x - avg_border_width * 2.0;
+        float edge_threshold_y = half_size.y - avg_border_width * 2.0;
+        
+        if (center_pos.y < -edge_threshold_y) {
+            // Top edge - use x position
+            perimeter_pos = local_pos.x;
+        } else if (center_pos.x > edge_threshold_x) {
+            // Right edge - use y position
+            perimeter_pos = local_pos.y + v_quad_size.x;
+        } else if (center_pos.y > edge_threshold_y) {
+            // Bottom edge - use x position (reversed)
+            perimeter_pos = (v_quad_size.x - local_pos.x) + v_quad_size.x + v_quad_size.y;
+        } else if (center_pos.x < -edge_threshold_x) {
+            // Left edge - use y position (reversed)
+            perimeter_pos = (v_quad_size.y - local_pos.y) + 2.0 * v_quad_size.x + v_quad_size.y;
+        } else {
+            // Corner region - use angle
+            float angle = atan(center_pos.y, center_pos.x);
+            float perimeter = 2.0 * (v_quad_size.x + v_quad_size.y);
+            perimeter_pos = (angle + 3.14159) / (2.0 * 3.14159) * perimeter;
+        }
+        
+        // Apply dash pattern with slight anti-aliasing
+        float pattern_phase = mod(perimeter_pos, pattern_length);
+        // Use step for crisp dashes (GPUI-style)
+        float dash_alpha = step(pattern_phase, dash_length);
+        
+        border_factor *= dash_alpha;
+    }
     
     // Mix colors
     vec4 bg_color = v_background_color;

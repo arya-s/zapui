@@ -20,6 +20,12 @@ const Background = style.Background;
 /// Draw order for z-sorting primitives
 pub const DrawOrder = u32;
 
+/// Border style for quads
+pub const BorderStyle = enum {
+    solid,
+    dashed,
+};
+
 /// A quad primitive - the primary building block for UI rendering.
 /// Supports backgrounds, borders, and rounded corners.
 pub const Quad = struct {
@@ -28,6 +34,7 @@ pub const Quad = struct {
     background: ?Background = null,
     border_color: ?Hsla = null,
     border_widths: Edges(ScaledPixels) = Edges(ScaledPixels).zero,
+    border_style: BorderStyle = .solid,
     corner_radii: Corners(ScaledPixels) = Corners(ScaledPixels).zero,
     content_mask: ?Bounds(ScaledPixels) = null,
 };

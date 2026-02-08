@@ -53,6 +53,12 @@ const QuadInstance = extern struct {
     mask_y: f32,
     mask_w: f32,
     mask_h: f32,
+    // a_border_style: float (0 = solid, 1 = dashed)
+    border_style: f32,
+    // padding for alignment (vec4 alignment)
+    _pad0: f32 = 0,
+    _pad1: f32 = 0,
+    _pad2: f32 = 0,
 };
 
 /// Instance data for sprite rendering
@@ -218,6 +224,12 @@ pub const GlRenderer = struct {
         gl.glEnableVertexAttribArray(6);
         gl.glVertexAttribPointer(6, 4, gl.GL_FLOAT, gl.GL_FALSE, stride, @ptrFromInt(offset));
         gl.glVertexAttribDivisor(6, 1);
+        offset += 4 * @sizeOf(f32);
+
+        // a_border_style (location 7) - just the first float of the vec4
+        gl.glEnableVertexAttribArray(7);
+        gl.glVertexAttribPointer(7, 4, gl.GL_FLOAT, gl.GL_FALSE, stride, @ptrFromInt(offset));
+        gl.glVertexAttribDivisor(7, 1);
 
         gl.glBindVertexArray(0);
 
@@ -452,6 +464,7 @@ pub const GlRenderer = struct {
                 .mask_y = mask.origin.y,
                 .mask_w = mask.size.width,
                 .mask_h = mask.size.height,
+                .border_style = if (quad.border_style == .dashed) 1.0 else 0.0,
             });
         }
 

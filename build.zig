@@ -102,9 +102,8 @@ pub fn build(b: *std.Build) void {
         .root_module = playground_mod,
     });
 
-    // Link system libraries for playground
-    playground.linkSystemLibrary("GL");
-    playground.linkSystemLibrary("glfw");
+    // Link system libraries for playground (cross-platform)
+    linkGraphicsLibraries(playground, target);
     playground.linkLibC();
     playground.linkLibrary(freetype_dep.artifact("freetype"));
     playground.linkLibrary(hb_lib);
@@ -132,8 +131,7 @@ pub fn build(b: *std.Build) void {
         .root_module = hello_world_mod,
     });
 
-    hello_world.linkSystemLibrary("GL");
-    hello_world.linkSystemLibrary("glfw");
+    linkGraphicsLibraries(hello_world, target);
     hello_world.linkLibC();
     hello_world.linkLibrary(freetype_dep.artifact("freetype"));
     hello_world.linkLibrary(hb_lib);
@@ -158,8 +156,7 @@ pub fn build(b: *std.Build) void {
         .root_module = zaffy_demo_mod,
     });
 
-    zaffy_demo.linkSystemLibrary("GL");
-    zaffy_demo.linkSystemLibrary("glfw");
+    linkGraphicsLibraries(zaffy_demo, target);
     zaffy_demo.linkLibC();
     zaffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
     zaffy_demo.linkLibrary(hb_lib);
@@ -184,8 +181,7 @@ pub fn build(b: *std.Build) void {
         .root_module = zaffy_visual_mod,
     });
 
-    zaffy_visual.linkSystemLibrary("GL");
-    zaffy_visual.linkSystemLibrary("glfw");
+    linkGraphicsLibraries(zaffy_visual, target);
     zaffy_visual.linkLibC();
     zaffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
     zaffy_visual.linkLibrary(hb_lib);
@@ -249,4 +245,31 @@ fn buildHarfbuzzLib(
     }
 
     return lib;
+}
+
+/// Link OpenGL and GLFW libraries based on target platform
+fn linkGraphicsLibraries(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
+    switch (target.result.os.tag) {
+        .windows => {
+            // Windows: use opengl32 and glfw3
+            compile.linkSystemLibrary("opengl32");
+            compile.linkSystemLibrary("glfw3");
+            compile.linkSystemLibrary("gdi32");
+            compile.linkSystemLibrary("user32");
+            compile.linkSystemLibrary("shell32");
+        },
+        .macos => {
+            // macOS: use frameworks
+            compile.linkFramework("OpenGL");
+            compile.linkFramework("Cocoa");
+            compile.linkFramework("IOKit");
+            compile.linkFramework("CoreVideo");
+            compile.linkSystemLibrary("glfw");
+        },
+        else => {
+            // Linux and others: use GL and glfw
+            compile.linkSystemLibrary("GL");
+            compile.linkSystemLibrary("glfw");
+        },
+    }
 }

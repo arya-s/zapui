@@ -76,15 +76,15 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
     const text_label = div().child_text(greeting);
 
     // Color boxes row - matches GPUI exactly:
-    // div().flex().gap_2().child(div().size_8().bg(red).border_1().rounded_md().border_color(white))...
+    // div().flex().gap_2().child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))...
     const color_boxes = h_flex()
         .gap_2()
-        .child(div().size_8().bg(red).border_1().rounded_md().border_color(white))
-        .child(div().size_8().bg(green).border_1().rounded_md().border_color(white))
-        .child(div().size_8().bg(blue).border_1().rounded_md().border_color(white))
-        .child(div().size_8().bg(yellow).border_1().rounded_md().border_color(white))
-        .child(div().size_8().bg(black).border_1().rounded_md().border_color(white))
-        .child(div().size_8().bg(white).border_1().rounded_md().border_color(black));
+        .child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))
+        .child(div().size_8().bg(green).border_1().border_dashed().rounded_md().border_color(white))
+        .child(div().size_8().bg(blue).border_1().border_dashed().rounded_md().border_color(white))
+        .child(div().size_8().bg(yellow).border_1().border_dashed().rounded_md().border_color(white))
+        .child(div().size_8().bg(black).border_1().border_dashed().rounded_md().border_color(white))
+        .child(div().size_8().bg(white).border_1().border_dashed().rounded_md().border_color(black));
 
     // Main container - matches GPUI exactly:
     // div().flex().flex_col().gap_3().bg(...).size(px(500)).justify_center().items_center()

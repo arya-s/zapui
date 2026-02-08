@@ -10,6 +10,7 @@ layout(location = 3) in vec4 a_border_color;     // RGBA
 layout(location = 4) in vec4 a_border_widths;    // top, right, bottom, left
 layout(location = 5) in vec4 a_corner_radii;     // TL, TR, BR, BL
 layout(location = 6) in vec4 a_content_mask;     // x, y, width, height (0,0,0,0 = no mask)
+layout(location = 7) in vec4 a_border_style;     // x = style (0 = solid, 1 = dashed), yzw = unused
 
 uniform vec2 u_viewport_size;
 
@@ -21,6 +22,7 @@ out vec4 v_border_widths;
 out vec4 v_corner_radii;
 out vec4 v_content_mask;
 out vec2 v_pixel_position;  // Absolute pixel position
+flat out float v_border_style;  // 0 = solid, 1 = dashed
 
 void main() {
     vec2 quad_pos = a_bounds.xy;
@@ -43,4 +45,5 @@ void main() {
     v_corner_radii = a_corner_radii;
     v_content_mask = a_content_mask;
     v_pixel_position = pixel_pos;
+    v_border_style = a_border_style.x;
 }

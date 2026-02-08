@@ -37,6 +37,12 @@ pub const Overflow = enum {
     scroll,
 };
 
+/// Border style
+pub const BorderStyle = enum {
+    solid,
+    dashed,
+};
+
 /// Flex direction
 pub const FlexDirection = enum {
     row,
@@ -215,6 +221,7 @@ pub const Style = struct {
     // Border
     border_widths: Edges(Pixels) = Edges(Pixels).zero,
     border_color: ?Hsla = null,
+    border_style: BorderStyle = .solid,
 
     // Corner radius
     corner_radii: Corners(Pixels) = Corners(Pixels).zero,
