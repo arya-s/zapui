@@ -101,8 +101,8 @@ const HelloWorld = struct {
 // Text Rendering Helper
 // ============================================================================
 
-/// Recursively draw text for div tree using D3D11TextRenderer
-fn drawTextForDiv(
+/// Draw text for all divs in tree using D3D11TextRenderer
+fn renderDivText(
     d: *const div_mod.Div,
     layout_tree: *const zaffy.Zaffy,
     text_renderer: *D3D11TextRenderer,
@@ -115,19 +115,17 @@ fn drawTextForDiv(
     const x = parent_x + lay.location.x;
     const y = parent_y + lay.location.y;
 
-    // Draw text content if present
     if (d.text_content_val) |text| {
         const text_w = text_renderer.measureText(text);
         const tx = x + (lay.size.width - text_w) / 2;
-        const ty = y + lay.size.height / 2 + 6; // baseline offset
+        const ty = y + lay.size.height / 2 + 6;
         const tc = d.text_color_val.toRgba();
         text_renderer.draw(renderer, text, tx, ty, .{ tc.r, tc.g, tc.b, tc.a });
     }
 
-    // Recurse into children
     for (d.children[0..d.child_count]) |maybe_child| {
         if (maybe_child) |child| {
-            drawTextForDiv(child, layout_tree, text_renderer, renderer, x, y);
+            renderDivText(child, layout_tree, text_renderer, renderer, x, y);
         }
     }
 }
@@ -196,13 +194,14 @@ pub fn main() !void {
         renderer.beginFrame();
         renderer.clear(0.314, 0.314, 0.314, 1.0); // rgb(0x505050)
 
+        // Paint quads only (text rendered separately for D3D11)
         scene.clear();
-        root.paint(&scene, &text_system, 0, 0, &layout, null, null);
+        root.paintQuadsOnly(&scene, 0, 0, &layout);
         scene.finish();
         renderer.drawScene(&scene);
 
-        // Draw text (separate from scene for now)
-        drawTextForDiv(root, &layout, &text_renderer, &renderer, 0, 0);
+        // Render text using D3D11TextRenderer
+        renderDivText(root, &layout, &text_renderer, &renderer, 0, 0);
 
         renderer.present(true);
     }

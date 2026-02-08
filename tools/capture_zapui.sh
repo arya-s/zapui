@@ -1,5 +1,5 @@
 #!/bin/bash
-# Capture screenshot of a ZapUI example on Windows
+# Capture screenshot of a ZapUI example on Windows using PrintWindow API
 #
 # Usage:
 #   ./capture_zapui.sh hello_world
@@ -34,30 +34,38 @@ Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class WinCapture {
+public class PrintWin {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
 }
 "@
 
+Stop-Process -Name "'"$EXAMPLE"'" -Force -EA SilentlyContinue
+Start-Sleep -Milliseconds 500
+
 Start-Process "C:\temp\'"$EXAMPLE"'.exe"
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 3
 
 $p = Get-Process -Name "'"$EXAMPLE"'" -EA SilentlyContinue | Select -First 1
 if ($p -and $p.MainWindowHandle -ne 0) {
-    $h = $p.MainWindowHandle
-    [WinCapture]::SetForegroundWindow($h) | Out-Null
+    $handle = $p.MainWindowHandle
+    [PrintWin]::SetForegroundWindow($handle) | Out-Null
     Start-Sleep -Milliseconds 500
-    $r = New-Object WinCapture+RECT
-    [WinCapture]::GetWindowRect($h, [ref]$r) | Out-Null
-    $w = $r.R - $r.L
-    $h = $r.B - $r.T
-    Write-Host "Window: $w x $h"
-    $bmp = New-Object Drawing.Bitmap($w, $h)
-    $g = [Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.L, $r.T, 0, 0, [Drawing.Size]::new($w, $h))
-    $bmp.Save("C:\temp\zapui_capture.png", [Drawing.Imaging.ImageFormat]::Png)
+    
+    $rect = New-Object PrintWin+RECT
+    [PrintWin]::GetWindowRect($handle, [ref]$rect) | Out-Null
+    $w = $rect.R - $rect.L
+    $h = $rect.B - $rect.T
+    Write-Host "Window: ${w} x ${h}"
+    
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    [PrintWin]::PrintWindow($handle, $hdc, 0) | Out-Null
+    $g.ReleaseHdc($hdc)
+    $bmp.Save("C:\temp\zapui_capture.png", [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose()
     $bmp.Dispose()
     Write-Host "Captured"

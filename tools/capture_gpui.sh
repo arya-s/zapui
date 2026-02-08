@@ -1,5 +1,5 @@
 #!/bin/bash
-# Capture screenshot of a GPUI example on Windows
+# Capture screenshot of a GPUI example on Windows using PrintWindow API
 #
 # Usage:
 #   ./capture_gpui.sh hello_world
@@ -14,24 +14,24 @@ SCREENSHOTS_DIR="$EXAMPLE_DIR/screenshots"
 
 mkdir -p "$SCREENSHOTS_DIR"
 
-echo "=== Capturing GPUI: $EXAMPLE ==="
+# GPUI examples location
+GPUI_DIR="/mnt/c/Users/iafan/source/zed/crates/gpui/examples"
+GPUI_EXE_DIR="/mnt/c/Users/iafan/source/zed/target/debug/examples"
 
-# Check for pre-built GPUI example
-ZED_DIR="/mnt/c/src/zed"
-EXAMPLE_EXE="$ZED_DIR/target/debug/examples/${EXAMPLE}.exe"
+EXE="$GPUI_EXE_DIR/${EXAMPLE}.exe"
 
-if [ ! -f "$EXAMPLE_EXE" ]; then
-    echo "Building GPUI example (may take a while first time)..."
-    powershell.exe -Command "cd 'C:\src\zed'; cargo build --example $EXAMPLE -p gpui"
-fi
-
-if [ ! -f "$EXAMPLE_EXE" ]; then
-    echo "❌ Failed to build GPUI example"
+if [ ! -f "$EXE" ]; then
+    echo "GPUI executable not found: $EXE"
+    echo "Build GPUI example first:"
+    echo "  cd /mnt/c/Users/iafan/source/zed"
+    echo "  cargo build --example $EXAMPLE"
     exit 1
 fi
 
-# Copy to temp
-cp "$EXAMPLE_EXE" "/mnt/c/temp/${EXAMPLE}_gpui.exe"
+echo "=== Capturing GPUI: $EXAMPLE ==="
+
+# Copy exe to Windows temp
+cp "$EXE" /mnt/c/temp/gpui_${EXAMPLE}.exe
 
 echo "Launching and capturing..."
 powershell.exe -Command '
@@ -40,36 +40,44 @@ Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class WinCapture {
+public class PrintWin {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
 }
 "@
 
-Start-Process "C:\temp\'"$EXAMPLE"'_gpui.exe"
+Stop-Process -Name "gpui_'"$EXAMPLE"'" -Force -EA SilentlyContinue
+Start-Sleep -Milliseconds 500
+
+Start-Process "C:\temp\gpui_'"$EXAMPLE"'.exe"
 Start-Sleep -Seconds 3
 
-$p = Get-Process -Name "'"$EXAMPLE"'_gpui" -EA SilentlyContinue | Select -First 1
+$p = Get-Process -Name "gpui_'"$EXAMPLE"'" -EA SilentlyContinue | Select -First 1
 if ($p -and $p.MainWindowHandle -ne 0) {
-    $h = $p.MainWindowHandle
-    [WinCapture]::SetForegroundWindow($h) | Out-Null
+    $handle = $p.MainWindowHandle
+    [PrintWin]::SetForegroundWindow($handle) | Out-Null
     Start-Sleep -Milliseconds 500
-    $r = New-Object WinCapture+RECT
-    [WinCapture]::GetWindowRect($h, [ref]$r) | Out-Null
-    $w = $r.R - $r.L
-    $h = $r.B - $r.T
-    Write-Host "Window: $w x $h"
-    $bmp = New-Object Drawing.Bitmap($w, $h)
-    $g = [Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.L, $r.T, 0, 0, [Drawing.Size]::new($w, $h))
-    $bmp.Save("C:\temp\gpui_capture.png", [Drawing.Imaging.ImageFormat]::Png)
+    
+    $rect = New-Object PrintWin+RECT
+    [PrintWin]::GetWindowRect($handle, [ref]$rect) | Out-Null
+    $w = $rect.R - $rect.L
+    $h = $rect.B - $rect.T
+    Write-Host "Window: ${w} x ${h}"
+    
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    [PrintWin]::PrintWindow($handle, $hdc, 0) | Out-Null
+    $g.ReleaseHdc($hdc)
+    $bmp.Save("C:\temp\gpui_capture.png", [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose()
     $bmp.Dispose()
     Write-Host "Captured"
 }
 
-Stop-Process -Name "'"$EXAMPLE"'_gpui" -Force -EA SilentlyContinue
+Stop-Process -Name "gpui_'"$EXAMPLE"'" -Force -EA SilentlyContinue
 '
 
 if [ -f "/mnt/c/temp/gpui_capture.png" ]; then

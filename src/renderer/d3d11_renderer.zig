@@ -24,6 +24,7 @@ const scene_mod = @import("../scene.zig");
 const Scene = scene_mod.Scene;
 const color_mod = @import("../color.zig");
 const Hsla = color_mod.Hsla;
+const d3d11_text = @import("d3d11_text.zig");
 
 // Helper to release COM objects
 fn release(comptime T: type, obj: *T) void {
@@ -800,6 +801,11 @@ pub const D3D11Renderer = struct {
 
     /// Draw a scene containing quads, shadows, and sprites
     pub fn drawScene(self: *D3D11Renderer, scene: *const Scene) void {
+        self.drawSceneWithText(scene, null);
+    }
+
+    /// Draw a scene with optional text renderer for MonochromeSprites
+    pub fn drawSceneWithText(self: *D3D11Renderer, scene: *const Scene, text_renderer: ?*d3d11_text.D3D11TextRenderer) void {
         // Draw shadows first (behind everything)
         const shadows = scene.getShadows();
         if (shadows.len > 0) {
@@ -820,8 +826,25 @@ pub const D3D11Renderer = struct {
             self.drawQuads(instances[0..count]);
         }
 
-        // Note: Sprites (text) require a texture atlas.
-        // Use D3D11TextRenderer for text rendering instead.
+        // Draw monochrome sprites (text glyphs) if text renderer provided
+        if (text_renderer) |tr| {
+            const mono_sprites = scene.getMonoSprites();
+            if (mono_sprites.len > 0 and tr.atlas_srv != null) {
+                var sprites: [256]SpriteInstance = undefined;
+                const count = @min(mono_sprites.len, 256);
+
+                for (mono_sprites[0..count], 0..) |s, i| {
+                    sprites[i] = .{
+                        .bounds = .{ s.bounds.origin.x, s.bounds.origin.y, s.bounds.size.width, s.bounds.size.height },
+                        .uv_bounds = .{ s.tile_bounds.origin.x, s.tile_bounds.origin.y, s.tile_bounds.size.width, s.tile_bounds.size.height },
+                        .color = hslaToRgba(s.color),
+                        .content_mask = if (s.content_mask) |m| .{ m.origin.x, m.origin.y, m.size.width, m.size.height } else .{ 0, 0, 0, 0 },
+                    };
+                }
+
+                self.drawSprites(sprites[0..count], tr.atlas_srv.?, true);
+            }
+        }
     }
 
     /// Convert a scene Quad to a D3D11 QuadInstance

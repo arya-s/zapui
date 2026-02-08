@@ -662,6 +662,56 @@ pub const Div = struct {
             }
         }
     }
+
+    /// Paint without rendering text to scene (for D3D11 where text is rendered separately)
+    pub fn paintQuadsOnly(
+        self: *const Self,
+        scene: *Scene,
+        parent_x: Pixels,
+        parent_y: Pixels,
+        tree: *const zaffy.Zaffy,
+    ) void {
+        const nid = self.node_id orelse return;
+        const layout = tree.getLayout(nid);
+
+        const x = parent_x + layout.location.x;
+        const y = parent_y + layout.location.y;
+        const lw = layout.size.width;
+        const lh = layout.size.height;
+        const bounds = Bounds(Pixels).fromXYWH(x, y, lw, lh);
+
+        // Render shadow
+        if (self.style.box_shadow) |box_shadow| {
+            scene.insertShadow(.{
+                .bounds = bounds,
+                .color = box_shadow.color,
+                .blur_radius = box_shadow.blur_radius,
+                .corner_radii = self.style.corner_radii,
+            }) catch {};
+        }
+
+        // Render quad
+        if (self.style.background != null or self.style.border_color != null) {
+            scene.insertQuad(.{
+                .bounds = bounds,
+                .background = self.style.background,
+                .border_color = self.style.border_color,
+                .border_widths = self.style.border_widths,
+                .border_style = switch (self.style.border_style) {
+                    .solid => .solid,
+                    .dashed => .dashed,
+                },
+                .corner_radii = self.style.corner_radii,
+            }) catch {};
+        }
+
+        // Recurse (skip text)
+        for (self.children[0..self.child_count]) |maybe_child| {
+            if (maybe_child) |c| {
+                c.paintQuadsOnly(scene, x, y, tree);
+            }
+        }
+    }
 };
 
 // ============================================================================
@@ -696,4 +746,45 @@ pub fn v_flex() *Div {
 /// Create a horizontal flex container (matches GPUI's h_flex())
 pub fn h_flex() *Div {
     return div().flex().flex_row();
+}
+
+/// Text draw callback for D3D11 rendering
+pub const TextDrawFn = *const fn (
+    text: []const u8,
+    x: Pixels,
+    y: Pixels,
+    size: Pixels,
+    color_r: f32,
+    color_g: f32,
+    color_b: f32,
+    color_a: f32,
+    ctx: ?*anyopaque,
+) void;
+
+/// Walk div tree and call callback for each text element
+pub fn drawTextWithCallback(
+    d: *const Div,
+    tree: *const zaffy.Zaffy,
+    parent_x: Pixels,
+    parent_y: Pixels,
+    callback: TextDrawFn,
+    ctx: ?*anyopaque,
+) void {
+    const nid = d.node_id orelse return;
+    const layout = tree.getLayout(nid);
+    const x = parent_x + layout.location.x;
+    const y = parent_y + layout.location.y;
+
+    if (d.text_content_val) |text| {
+        // Calculate centered position (simplified - assumes centered layout)
+        // The callback can do its own measurement for precise centering
+        const tc = d.text_color_val.toRgba();
+        callback(text, x, y, d.text_size_val, tc.r, tc.g, tc.b, tc.a, ctx);
+    }
+
+    for (d.children[0..d.child_count]) |maybe_child| {
+        if (maybe_child) |child| {
+            drawTextWithCallback(child, tree, x, y, callback, ctx);
+        }
+    }
 }
