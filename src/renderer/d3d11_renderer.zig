@@ -471,6 +471,44 @@ pub const D3D11Renderer = struct {
         const cb_hr = self.device.vtable.CreateBuffer(self.device, &cb_desc, null, @ptrCast(&cb));
         if (cb_hr != S_OK) return error.CreateConstantBufferFailed;
         self.constant_buffer = cb;
+        
+        // Sprite instance buffer (StructuredBuffer)
+        var sib_desc = std.mem.zeroes(d3d11.D3D11_BUFFER_DESC);
+        sib_desc.ByteWidth = self.max_instances * @sizeOf(SpriteInstance);
+        sib_desc.Usage = .DYNAMIC;
+        sib_desc.BindFlags = .{ .SHADER_RESOURCE = 1 };
+        sib_desc.CPUAccessFlags = .{ .WRITE = 1 };
+        sib_desc.MiscFlags = .{ .BUFFER_STRUCTURED = 1 };
+        sib_desc.StructureByteStride = @sizeOf(SpriteInstance);
+        
+        var sib: *d3d11.ID3D11Buffer = undefined;
+        const sib_hr = self.device.vtable.CreateBuffer(self.device, &sib_desc, null, @ptrCast(&sib));
+        if (sib_hr != S_OK) return error.CreateSpriteInstanceBufferFailed;
+        self.sprite_instance_buffer = sib;
+        
+        // Create SRV for sprite instance buffer
+        var ssrv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
+        ssrv_desc.Format = .UNKNOWN;
+        ssrv_desc.ViewDimension = ._SRV_DIMENSION_BUFFER;
+        ssrv_desc.Anonymous.Buffer.Anonymous1.FirstElement = 0;
+        ssrv_desc.Anonymous.Buffer.Anonymous2.NumElements = self.max_instances;
+        
+        var ssrv: *d3d11.ID3D11ShaderResourceView = undefined;
+        const ssrv_hr = self.device.vtable.CreateShaderResourceView(self.device, @ptrCast(sib), &ssrv_desc, @ptrCast(&ssrv));
+        if (ssrv_hr != S_OK) return error.CreateSpriteSRVFailed;
+        self.sprite_instance_srv = ssrv;
+        
+        // Sprite constant buffer
+        var scb_desc = std.mem.zeroes(d3d11.D3D11_BUFFER_DESC);
+        scb_desc.ByteWidth = @sizeOf(SpriteGlobalParams);
+        scb_desc.Usage = .DYNAMIC;
+        scb_desc.BindFlags = .{ .CONSTANT_BUFFER = 1 };
+        scb_desc.CPUAccessFlags = .{ .WRITE = 1 };
+        
+        var scb: *d3d11.ID3D11Buffer = undefined;
+        const scb_hr = self.device.vtable.CreateBuffer(self.device, &scb_desc, null, @ptrCast(&scb));
+        if (scb_hr != S_OK) return error.CreateSpriteConstantBufferFailed;
+        self.sprite_constant_buffer = scb;
     }
     
     fn createStates(self: *D3D11Renderer) !void {
@@ -500,6 +538,22 @@ pub const D3D11Renderer = struct {
         const rs_hr = self.device.vtable.CreateRasterizerState(self.device, &rast_desc, @ptrCast(&rast_state));
         if (rs_hr != S_OK) return error.CreateRasterizerStateFailed;
         self.rasterizer_state = rast_state;
+        
+        // Sampler state for sprite textures
+        var sampler_desc = std.mem.zeroes(d3d11.D3D11_SAMPLER_DESC);
+        sampler_desc.Filter = .MIN_MAG_MIP_LINEAR;
+        sampler_desc.AddressU = .CLAMP;
+        sampler_desc.AddressV = .CLAMP;
+        sampler_desc.AddressW = .CLAMP;
+        sampler_desc.MaxAnisotropy = 1;
+        sampler_desc.ComparisonFunc = .NEVER;
+        sampler_desc.MinLOD = 0;
+        sampler_desc.MaxLOD = 3.402823466e+38; // D3D11_FLOAT32_MAX
+        
+        var sampler: *d3d11.ID3D11SamplerState = undefined;
+        const ss_hr = self.device.vtable.CreateSamplerState(self.device, &sampler_desc, @ptrCast(&sampler));
+        if (ss_hr != S_OK) return error.CreateSamplerStateFailed;
+        self.sprite_sampler = sampler;
     }
 
     pub fn deinit(self: *D3D11Renderer) void {
@@ -643,6 +697,87 @@ pub const D3D11Renderer = struct {
         // Set instance SRV
         var srvs = [1]?*d3d11.ID3D11ShaderResourceView{srv};
         self.context.vtable.VSSetShaderResources(self.context, 0, 1, @ptrCast(&srvs));
+        
+        // Draw instanced
+        self.context.vtable.DrawInstanced(self.context, 6, @intCast(instances.len), 0, 0);
+    }
+    
+    /// Draw sprites (text glyphs or images)
+    /// texture_srv: The texture to sample from (glyph atlas or image atlas)
+    /// is_mono: true for monochrome text, false for color images
+    pub fn drawSprites(
+        self: *D3D11Renderer,
+        instances: []const SpriteInstance,
+        texture_srv: *d3d11.ID3D11ShaderResourceView,
+        is_mono: bool,
+    ) void {
+        if (instances.len == 0) return;
+        
+        const vs = self.sprite_vertex_shader orelse return;
+        const ps = self.sprite_pixel_shader orelse return;
+        const vb = self.vertex_buffer orelse return;
+        const sib = self.sprite_instance_buffer orelse return;
+        const srv = self.sprite_instance_srv orelse return;
+        const cb = self.sprite_constant_buffer orelse return;
+        const sampler = self.sprite_sampler orelse return;
+        const layout = self.input_layout orelse return;
+        
+        // Upload instance data
+        var mapped: d3d11.D3D11_MAPPED_SUBRESOURCE = undefined;
+        const map_hr = self.context.vtable.Map(self.context, @ptrCast(sib), 0, .WRITE_DISCARD, 0, &mapped);
+        if (map_hr != S_OK) return;
+        
+        const dest: [*]SpriteInstance = @ptrCast(@alignCast(mapped.pData));
+        @memcpy(dest[0..instances.len], instances);
+        self.context.vtable.Unmap(self.context, @ptrCast(sib), 0);
+        
+        // Update constant buffer
+        var cb_mapped: d3d11.D3D11_MAPPED_SUBRESOURCE = undefined;
+        const cb_map_hr = self.context.vtable.Map(self.context, @ptrCast(cb), 0, .WRITE_DISCARD, 0, &cb_mapped);
+        if (cb_map_hr != S_OK) return;
+        
+        const params: *SpriteGlobalParams = @ptrCast(@alignCast(cb_mapped.pData));
+        params.* = .{
+            .viewport_size = .{ @floatFromInt(self.width), @floatFromInt(self.height) },
+            .is_mono = if (is_mono) 1 else 0,
+            ._padding = 0,
+        };
+        self.context.vtable.Unmap(self.context, @ptrCast(cb), 0);
+        
+        // Set shaders
+        self.context.vtable.VSSetShader(self.context, vs, null, 0);
+        self.context.vtable.PSSetShader(self.context, ps, null, 0);
+        
+        // Set input layout and vertex buffer (same quad as quads)
+        self.context.vtable.IASetInputLayout(self.context, layout);
+        var vbs = [1]?*d3d11.ID3D11Buffer{vb};
+        var strides = [1]u32{@sizeOf(f32) * 2};
+        var offsets = [1]u32{0};
+        self.context.vtable.IASetVertexBuffers(self.context, 0, 1, @ptrCast(&vbs), &strides, &offsets);
+        self.context.vtable.IASetPrimitiveTopology(self.context, ._PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        // Set blend state
+        if (self.blend_state) |bs| {
+            const blend_factor = [4]f32{ 0, 0, 0, 0 };
+            self.context.vtable.OMSetBlendState(self.context, bs, @ptrCast(&blend_factor), 0xFFFFFFFF);
+        }
+        
+        // Set constant buffer
+        var cbs = [1]?*d3d11.ID3D11Buffer{cb};
+        self.context.vtable.VSSetConstantBuffers(self.context, 0, 1, @ptrCast(&cbs));
+        self.context.vtable.PSSetConstantBuffers(self.context, 0, 1, @ptrCast(&cbs));
+        
+        // Set instance SRV (slot 0 for instances)
+        var inst_srvs = [1]?*d3d11.ID3D11ShaderResourceView{srv};
+        self.context.vtable.VSSetShaderResources(self.context, 0, 1, @ptrCast(&inst_srvs));
+        
+        // Set texture SRV (slot 1 for texture)
+        var tex_srvs = [1]?*d3d11.ID3D11ShaderResourceView{texture_srv};
+        self.context.vtable.PSSetShaderResources(self.context, 1, 1, @ptrCast(&tex_srvs));
+        
+        // Set sampler
+        var samplers = [1]?*d3d11.ID3D11SamplerState{sampler};
+        self.context.vtable.PSSetSamplers(self.context, 0, 1, @ptrCast(&samplers));
         
         // Draw instanced
         self.context.vtable.DrawInstanced(self.context, 6, @intCast(instances.len), 0, 0);
