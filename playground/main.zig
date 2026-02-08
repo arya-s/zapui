@@ -92,6 +92,16 @@ const ID_BTN_SUCCESS = 42;
 const ID_BTN_DANGER = 43;
 const ID_BTN_OUTLINE = 44;
 const ID_BTN_GHOST = 45;
+const ID_INPUT1 = 50;
+const ID_INPUT2 = 51;
+
+// Text input state
+var g_focused_input: ?usize = null;
+var g_input1_buf: [64]u8 = undefined;
+var g_input1_len: usize = 0;
+var g_input2_buf: [64]u8 = undefined;
+var g_input2_len: usize = 0;
+var g_cursor_blink: u32 = 0;
 
 fn resetHitboxes() void { g_hitbox_count = 0; }
 
@@ -294,17 +304,55 @@ fn sectionTitle(title: []const u8) *Div {
     return div().child_text(title).text_color(C.text_muted).text_xs();
 }
 
-fn inputField(placeholder: []const u8, width: Pixels) *Div {
+var g_input_display_buf: [128]u8 = undefined;
+
+fn inputField(placeholder: []const u8, value: []const u8, id: usize) *Div {
+    const focused = g_focused_input == id;
+    const hovered = isHovered(id);
+    const border_c = if (focused) C.primary else if (hovered) C.text_muted else C.border;
+    
+    const has_value = value.len > 0;
+    
+    // Build display string with cursor if focused
+    const display_text = if (focused) blk: {
+        const show_cursor = (g_cursor_blink / 30) % 2 == 0;
+        
+        if (has_value) {
+            @memcpy(g_input_display_buf[0..value.len], value);
+            if (show_cursor) {
+                // Use thin bar Unicode: ▏ (U+258F) = 0xE2 0x96 0x8F in UTF-8
+                g_input_display_buf[value.len] = 0xE2;
+                g_input_display_buf[value.len + 1] = 0x96;
+                g_input_display_buf[value.len + 2] = 0x8F;
+                break :blk g_input_display_buf[0 .. value.len + 3];
+            } else {
+                break :blk g_input_display_buf[0..value.len];
+            }
+        } else {
+            if (show_cursor) {
+                g_input_display_buf[0] = 0xE2;
+                g_input_display_buf[1] = 0x96;
+                g_input_display_buf[2] = 0x8F;
+                break :blk g_input_display_buf[0..3];
+            } else {
+                break :blk placeholder;
+            }
+        }
+    } else if (has_value) value else placeholder;
+    
+    const text_c = if (has_value or focused) C.text_primary else C.text_muted;
+    
     return div()
-        .w(px(width)).h(px(38))
+        .w(px(300)).h(px(38))
         .bg(C.bg_input)
-        .border_1().border_color(C.border)
+        .border_1().border_color(border_c)
         .rounded(px(6))
         .px(px(12))
         .items_center()
-        .child_text(placeholder)
+        .id(id)
+        .child_text(display_text)
         .text_sm()
-        .text_color(C.text_muted);
+        .text_color(text_c);
 }
 
 // ============================================================================
@@ -332,9 +380,10 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
             div().child_text("ZapUI Component Showcase").text_xl().text_color(C.white)
         )
         .child(
-            h_flex().gap(px(12))
+            h_flex().gap(px(16)).items_center()
                 .child(badge("v0.1", C.primary))
                 .child(badge("Beta", C.warning))
+                .child(div().w(px(40))) // spacer for emoji
         );
     
     // Left sidebar - Navigation
@@ -381,9 +430,9 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
     tree.computeLayoutWithSize(root.node_id.?, width, height);
     root.paint(scene, text_system, 0, 0, tree, addHitbox, isHovered);
 
-    // Emoji decoration
+    // Emoji decoration in header
     if (text_system.fonts.items.len > 1) {
-        text_system.renderTextWithFont(scene, "🎨", width - 50, 18, 24, C.white, 1) catch {};
+        text_system.renderTextWithFont(scene, "🎨", width - 46, 32, 24, C.white, 1) catch {};
     }
 }
 
@@ -451,10 +500,10 @@ fn buildFormControlsTab() *Div {
         )
         .child(
             card()
-                .child(div().child_text("Text Inputs (display only)").text_color(C.text_primary))
+                .child(div().child_text("Text Inputs").text_color(C.text_primary))
                 .child(v_flex().gap(px(12))
-                    .child(inputField("Enter your name...", 300))
-                    .child(inputField("Email address...", 300)))
+                    .child(inputField("Enter your name...", g_input1_buf[0..g_input1_len], ID_INPUT1))
+                    .child(inputField("Email address...", g_input2_buf[0..g_input2_len], ID_INPUT2)))
         );
 }
 
@@ -504,7 +553,46 @@ fn handleClick() void {
             ID_TAB1 => g_selected_tab = 0,
             ID_TAB2 => g_selected_tab = 1,
             ID_TAB3 => g_selected_tab = 2,
-            else => {},
+            ID_INPUT1, ID_INPUT2 => g_focused_input = id,
+            else => g_focused_input = null,
+        }
+    } else {
+        g_focused_input = null;
+    }
+}
+
+fn handleCharInput(codepoint: u21) void {
+    if (g_focused_input) |id| {
+        // Only handle printable ASCII for simplicity
+        if (codepoint >= 32 and codepoint < 127) {
+            const char: u8 = @intCast(codepoint);
+            if (id == ID_INPUT1 and g_input1_len < g_input1_buf.len - 1) {
+                g_input1_buf[g_input1_len] = char;
+                g_input1_len += 1;
+            } else if (id == ID_INPUT2 and g_input2_len < g_input2_buf.len - 1) {
+                g_input2_buf[g_input2_len] = char;
+                g_input2_len += 1;
+            }
+        }
+    }
+}
+
+fn handleKeyInput(key: c_int) void {
+    const GLFW_KEY_BACKSPACE = 259;
+    const GLFW_KEY_ESCAPE = 256;
+    
+    if (key == GLFW_KEY_ESCAPE) {
+        g_focused_input = null;
+        return;
+    }
+    
+    if (g_focused_input) |id| {
+        if (key == GLFW_KEY_BACKSPACE) {
+            if (id == ID_INPUT1 and g_input1_len > 0) {
+                g_input1_len -= 1;
+            } else if (id == ID_INPUT2 and g_input2_len > 0) {
+                g_input2_len -= 1;
+            }
         }
     }
 }
@@ -555,6 +643,20 @@ pub fn main() !void {
         }
     }.cb);
 
+    _ = glfw.glfwSetCharCallback(win, struct {
+        fn cb(_: ?*glfw.GLFWwindow, codepoint: c_uint) callconv(.c) void {
+            handleCharInput(@intCast(codepoint));
+        }
+    }.cb);
+
+    _ = glfw.glfwSetKeyCallback(win, struct {
+        fn cb(_: ?*glfw.GLFWwindow, key: c_int, _: c_int, action: c_int, _: c_int) callconv(.c) void {
+            if (action == glfw.GLFW_PRESS or action == glfw.GLFW_REPEAT) {
+                handleKeyInput(key);
+            }
+        }
+    }.cb);
+
     // Load OpenGL functions
     const getProcWrapper = struct {
         fn get(name: [*:0]const u8) ?*anyopaque {
@@ -588,6 +690,9 @@ pub fn main() !void {
 
     while (glfw.glfwWindowShouldClose(win) == 0) {
         glfw.glfwPollEvents();
+        
+        // Update cursor blink
+        g_cursor_blink +%= 1;
 
         var ww: c_int = 0;
         var wh: c_int = 0;
