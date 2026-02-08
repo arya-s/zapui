@@ -1,6 +1,6 @@
 //! Hello World - Port of GPUI's hello_world.rs example
 //!
-//! This version uses ZapUI's div element system, matching GPUI's API closely.
+//! Uses ZapUI's div element system with GPUI-compatible API.
 
 const std = @import("std");
 const zapui = @import("zapui");
@@ -17,6 +17,7 @@ const zaffy = zapui.zaffy;
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
 const D3D11SceneContext = zapui.renderer.d3d11_scene.D3D11SceneContext;
+const GlyphCache = zapui.glyph_cache.GlyphCache;
 const Scene = zapui.scene.Scene;
 
 // Platform
@@ -39,36 +40,28 @@ const white = color.white;
 const HelloWorld = struct {
     text: []const u8,
 
-    // Port of GPUI's Render trait:
+    // Port of GPUI's Render trait implementation:
     //
     // impl Render for HelloWorld {
     //     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
     //         div()
-    //             .flex()
-    //             .flex_col()
-    //             .gap_3()
+    //             .flex().flex_col().gap_3()
     //             .bg(rgb(0x505050))
     //             .size(px(500.0))
-    //             .justify_center()
-    //             .items_center()
-    //             .text_xl()
-    //             .text_color(rgb(0xffffff))
+    //             .justify_center().items_center()
+    //             .text_xl().text_color(rgb(0xffffff))
     //             .child(format!("Hello, {}!", &self.text))
-    //             .child(
-    //                 div()
-    //                     .flex()
-    //                     .gap_2()
-    //                     .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     ...
+    //             .child(div().flex().gap_2()
+    //                 .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::green())...)
+    //                 ...
     //             )
     //     }
     // }
     //
     fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
-        // format!("Hello, {}!", &self.text) -> std.fmt.bufPrint
         const label = std.fmt.bufPrint(label_buf, "Hello, {s}!", .{self.text}) catch "Hello!";
 
-        // Build the UI tree - matches GPUI almost exactly
         return div()
             .flex()
             .flex_col()
@@ -79,18 +72,14 @@ const HelloWorld = struct {
             .items_center()
             .text_xl()
             .text_color(rgb(0xffffff))
-            .child(div().child_text(label)) // .child("text") -> .child(div().child_text("text"))
-            .child(
-            div()
-                .flex()
-                .gap_2()
+            .child(div().child_text(label))
+            .child(div().flex().gap_2()
                 .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
                 .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
                 .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
                 .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
                 .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())),
-        );
+                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())));
     }
 };
 
@@ -118,10 +107,9 @@ pub fn main() !void {
     var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Shared glyph cache (used by both TextSystem and D3D11TextRenderer)
-    var glyph_cache = try zapui.glyph_cache.GlyphCache.init(allocator);
+    // Shared glyph cache
+    var glyph_cache = try GlyphCache.init(allocator);
     defer glyph_cache.deinit();
-
     const font_id = try glyph_cache.loadFont(font_data);
 
     // Text system (for layout measurement)
@@ -133,7 +121,7 @@ pub fn main() !void {
     var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, &glyph_cache, font_id, 20);
     defer text_renderer.deinit();
 
-    // Scene context (combines renderer + text renderer)
+    // Scene context
     var scene_ctx = D3D11SceneContext{
         .renderer = &renderer,
         .text_renderer = &text_renderer,
@@ -169,11 +157,8 @@ pub fn main() !void {
 
         // Render
         renderer.beginFrame();
-        renderer.clear(0.314, 0.314, 0.314, 1.0); // rgb(0x505050)
-
-        // Single call to render complete UI (quads + text)
+        renderer.clear(0.314, 0.314, 0.314, 1.0);
         scene_ctx.renderDiv(root, &layout, &scene);
-
         renderer.present(true);
     }
 }

@@ -28,9 +28,18 @@
         }
         .card h3 { margin-top: 0; color: #3b82f6; }
         
-        .screenshot { max-width: 100%; border-radius: 4px; border: 1px solid #444; }
-        .screenshot-container { text-align: center; }
-        .screenshot-container img { max-height: 400px; object-fit: contain; }
+        .screenshot {
+            max-width: 100%;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        .screenshot-container {
+            text-align: center;
+        }
+        .screenshot-container img {
+            max-height: 400px;
+            object-fit: contain;
+        }
         
         pre {
             background: #1e1e1e;
@@ -48,14 +57,40 @@
         .rust { border-left: 3px solid #dea584; }
         .zig { border-left: 3px solid #f7a41d; }
         
-        .stats { display: flex; gap: 20px; flex-wrap: wrap; }
-        .stat { background: #333; padding: 10px 20px; border-radius: 4px; }
+        .warnings { background: #3a2a00; border-color: #5a4a00; }
+        .warnings li { margin: 5px 0; }
+        .warnings .success { color: #4ade80; }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: #333;
+            padding: 10px 20px;
+            border-radius: 4px;
+        }
         .stat-value { font-size: 24px; font-weight: bold; color: #3b82f6; }
         .stat-label { font-size: 12px; color: #888; }
         
+        .commands {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .commands code {
+            display: block;
+            padding: 5px 0;
+            color: #4ade80;
+        }
+        
         a { color: #3b82f6; }
         
-        @media (max-width: 900px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) {
+            .grid, .grid-3 { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -67,20 +102,33 @@
             <div class="stat-label">Rust LOC</div>
         </div>
         <div class="stat">
-            <div class="stat-value">208</div>
+            <div class="stat-value">110</div>
             <div class="stat-label">Zig LOC</div>
         </div>
+        <div class="stat">
+            <div class="stat-value">9</div>
+            <div class="stat-label">Colors</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">500x500</div>
+            <div class="stat-label">Window Size</div>
+        </div>
+    </div>
+    
+    <h2>⚠️ Translation Warnings</h2>
+    <div class="card warnings">
+        <ul><li>Context/state: needs manual conversion</li><li>Render trait: convert to render function</li><li>Format strings: use std.fmt.bufPrint</li></ul>
     </div>
     
     <h2>📸 Screenshots</h2>
     <div class="grid-3">
         <div class="card screenshot-container">
             <h3>GPUI (Rust)</h3>
-            <img src="screenshots/gpui.png" alt="GPUI" class="screenshot">
+            <img src="screenshots/gpui.png" alt="GPUI Screenshot" class="screenshot">
         </div>
         <div class="card screenshot-container">
             <h3>ZapUI (Zig)</h3>
-            <img src="screenshots/zapui.png" alt="ZapUI" class="screenshot">
+            <img src="screenshots/zapui.png" alt="ZapUI Screenshot" class="screenshot">
         </div>
         <div class="card screenshot-container">
             <h3>Difference</h3>
@@ -90,7 +138,7 @@
     
     <h2>🔄 Animated Comparison</h2>
     <div class="card screenshot-container">
-        <img src="screenshots/toggle.gif" alt="Toggle" class="screenshot">
+        <img src="screenshots/toggle.gif" alt="Toggle Animation" class="screenshot">
     </div>
     
     <h2>📝 Source Code</h2>
@@ -208,135 +256,74 @@ fn main() {
         <div class="card">
             <h3>Zig (ZapUI) - hello_world.zig</h3>
             <pre class="zig"><code>//! Hello World - Port of GPUI&#x27;s hello_world.rs example
-//!
-//! This version uses ZapUI&#x27;s div element system, matching GPUI&#x27;s API closely.
 
 const std = @import(&quot;std&quot;);
 const zapui = @import(&quot;zapui&quot;);
 
-// Element system
-const div_mod = zapui.elements.div;
-const div = div_mod.div;
-const px = div_mod.px;
-
-// Layout
-const zaffy = zapui.zaffy;
-
-// Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
-const Scene = zapui.scene.Scene;
-
-// Platform
+const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors (matches GPUI&#x27;s color functions)
-const color = zapui.color;
-const rgb = color.rgb;
-const red = color.red;
-const green = color.green;
-const blue = color.blue;
-const yellow = color.yellow;
-const black = color.black;
-const white = color.white;
+// Colors
+fn rgb(hex: u24) [4]f32 {
+    return .{
+        @as(f32, @floatFromInt((hex &gt;&gt; 16) &amp; 0xFF)) / 255.0,
+        @as(f32, @floatFromInt((hex &gt;&gt; 8) &amp; 0xFF)) / 255.0,
+        @as(f32, @floatFromInt(hex &amp; 0xFF)) / 255.0,
+        1.0,
+    };
+}
+// rgb(0x0000ff)
+// rgb(0x505050)
+const black = [4]f32{ 0, 0, 0, 1 };
+const blue = [4]f32{ 0, 0, 1, 1 };
+// rgb(0xffffff)
+const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()
+const red = [4]f32{ 1, 0, 0, 1 };
+const white = [4]f32{ 1, 1, 1, 1 };
+const yellow = [4]f32{ 1, 1, 0, 1 };
 
 // ============================================================================
 // HelloWorld
 // ============================================================================
 
 const HelloWorld = struct {
-    text: []const u8,
+    // TODO: Add state fields from Rust struct
 
-    // Port of GPUI&#x27;s Render trait:
-    //
-    // impl Render for HelloWorld {
-    //     fn render(&amp;mut self, _window: &amp;mut Window, _cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
-    //         div()
-    //             .flex()
-    //             .flex_col()
-    //             .gap_3()
-    //             .bg(rgb(0x505050))
-    //             .size(px(500.0))
-    //             .justify_center()
-    //             .items_center()
-    //             .text_xl()
-    //             .text_color(rgb(0xffffff))
-    //             .child(format!(&quot;Hello, {}!&quot;, &amp;self.text))
-    //             .child(
-    //                 div()
-    //                     .flex()
-    //                     .gap_2()
-    //                     .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
-    //             )
-    //     }
-    // }
-    //
-    fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
-        // format!(&quot;Hello, {}!&quot;, &amp;self.text) -&gt; std.fmt.bufPrint
-        const label = std.fmt.bufPrint(label_buf, &quot;Hello, {s}!&quot;, .{self.text}) catch &quot;Hello!&quot;;
-
-        // Build the UI tree - matches GPUI almost exactly
-        return div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .bg(rgb(0x505050))
-            .size(px(500))
-            .justify_center()
-            .items_center()
-            .text_xl()
-            .text_color(rgb(0xffffff))
-            .child(div().child_text(label)) // .child(&quot;text&quot;) -&gt; .child(div().child_text(&quot;text&quot;))
-            .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())),
-        );
+    fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {
+        _ = self;
+        _ = text_renderer;
+        
+        // TODO: Port the render() implementation from hello_world.rs
+        // 
+        // GPUI patterns -&gt; ZapUI:
+        //   div().bg(rgb(0xNNNNNN))     -&gt; renderer.clear(rgb(0xNNNNNN))
+        //   div().size_8().bg(color)   -&gt; quad(x, y, 32, color, border)
+        //   .child(&quot;text&quot;)             -&gt; text_renderer.draw(renderer, &quot;text&quot;, x, y, color)
+        //   format!(&quot;...&quot;, val)        -&gt; std.fmt.bufPrint(&amp;buf, &quot;...&quot;, .{val})
+        
+        renderer.clear(0.2, 0.2, 0.2, 1.0);
+        
+        // Example quad:
+        // const quads = [_]QuadInstance{
+        //     quad(100, 100, 32, red, white),
+        // };
+        // renderer.drawQuads(&amp;quads);
     }
 };
 
-// ============================================================================
-// Text Rendering Helper
-// ============================================================================
-
-/// Draw text for all divs in tree using D3D11TextRenderer
-fn renderDivText(
-    d: *const div_mod.Div,
-    layout_tree: *const zaffy.Zaffy,
-    text_renderer: *D3D11TextRenderer,
-    renderer: *D3D11Renderer,
-    parent_x: f32,
-    parent_y: f32,
-) void {
-    const nid = d.node_id orelse return;
-    const lay = layout_tree.getLayout(nid);
-    const x = parent_x + lay.location.x;
-    const y = parent_y + lay.location.y;
-
-    if (d.text_content_val) |text| {
-        const text_w = text_renderer.measureText(text);
-        const tx = x + (lay.size.width - text_w) / 2;
-        const ty = y + lay.size.height / 2 + 6;
-        const tc = d.text_color_val.toRgba();
-        text_renderer.draw(renderer, text, tx, ty, .{ tc.r, tc.g, tc.b, tc.a });
-    }
-
-    for (d.children[0..d.child_count]) |maybe_child| {
-        if (maybe_child) |child| {
-            renderDivText(child, layout_tree, text_renderer, renderer, x, y);
-        }
-    }
+// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
+fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
+    return .{
+        .bounds = .{ x, y, size, size },
+        .background_color = bg,
+        .border_color = border,
+        .border_widths = .{ 1, 1, 1, 1 },
+        .corner_radii = .{ 6, 6, 6, 6 },
+        .border_style = .{ 1, 0, 0, 0 }, // dashed
+        .content_mask = .{ 0, 0, 0, 0 },
+    };
 }
 
 // ============================================================================
@@ -346,9 +333,6 @@ fn renderDivText(
 const font_data = @embedFile(&quot;LiberationSans-Regular.ttf&quot;);
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-
-    // Platform
     var platform = try Win32.init();
     defer platform.deinit();
 
@@ -359,27 +343,13 @@ pub fn main() !void {
     });
     defer window.destroy();
 
-    // Renderer
-    var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
+    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Text systems
-    var text_system = try zapui.text_system.TextSystem.init(allocator);
-    defer text_system.deinit();
-    _ = try text_system.loadFontMem(font_data);
-
-    var text_renderer = try D3D11TextRenderer.init(allocator, &amp;renderer, font_data, 20);
+    var text_renderer = try D3D11TextRenderer.init(std.heap.page_allocator, &amp;renderer, font_data, 20);
     defer text_renderer.deinit();
 
-    // Layout &amp; scene
-    var layout = zaffy.Zaffy.init(allocator);
-    defer layout.deinit();
-
-    var scene = Scene.init(allocator);
-    defer scene.deinit();
-
-    // Application state
-    var state = HelloWorld{ .text = &quot;World&quot; };
+    var state = HelloWorld{};
 
     while (!window.shouldClose()) {
         for (window.pollEvents()) |e| {
@@ -390,28 +360,8 @@ pub fn main() !void {
             }
         }
 
-        // Build UI
-        div_mod.reset();
-        var label_buf: [64]u8 = undefined;
-        const root = state.render(&amp;label_buf);
-
-        // Layout
-        try root.buildWithTextSystem(&amp;layout, 16, &amp;text_system);
-        layout.computeLayoutWithSize(root.node_id.?, 500, 500);
-
-        // Render
         renderer.beginFrame();
-        renderer.clear(0.314, 0.314, 0.314, 1.0); // rgb(0x505050)
-
-        // Paint quads only (text rendered separately for D3D11)
-        scene.clear();
-        root.paintQuadsOnly(&amp;scene, 0, 0, &amp;layout);
-        scene.finish();
-        renderer.drawScene(&amp;scene);
-
-        // Render text using D3D11TextRenderer
-        renderDivText(root, &amp;layout, &amp;text_renderer, &amp;renderer, 0, 0);
-
+        state.render(&amp;renderer, &amp;text_renderer);
         renderer.present(true);
     }
 }
@@ -419,10 +369,23 @@ pub fn main() !void {
         </div>
     </div>
     
+    <h2>🛠️ Build Commands</h2>
+    <div class="commands">
+        <code># Build for Windows</code>
+        <code>make windows</code>
+        <code></code>
+        <code># Capture screenshots</code>
+        <code>make capture-both EXAMPLE=hello_world</code>
+        <code></code>
+        <code># Generate comparison</code>
+        <code>make compare EXAMPLE=hello_world</code>
+    </div>
+    
     <h2>🔗 Links</h2>
     <ul>
         <li><a href="https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/hello_world.rs" target="_blank">Original GPUI Source</a></li>
         <li><a href="hello_world.zig">ZapUI Port Source</a></li>
+        <li><a href="hello_world.rs">Local GPUI Copy</a></li>
     </ul>
 </body>
 </html>
