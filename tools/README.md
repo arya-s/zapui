@@ -13,14 +13,34 @@ examples/gpui_ports/
 │   └── screenshots/
 │       ├── zapui.png      # ZapUI screenshot
 │       ├── gpui.png       # GPUI screenshot
-│       └── comparison.png # Side-by-side image
+│       ├── comparison.png # Side-by-side image
+│       ├── diff.png       # Pixel differences
+│       └── toggle.gif     # Animated toggle
 ├── gradient/
 │   └── ...
 └── shadow/
     └── ...
 ```
 
-## port_gpui_example.py
+## Quick Start (Windows + WSL)
+
+```bash
+# 1. Port an example
+make port-gpui EXAMPLE=hello_world
+
+# 2. Build for Windows
+make windows
+
+# 3. On Windows, run comparison script (uses ShareX)
+tools\compare_windows.bat hello_world
+
+# 4. Back in WSL, generate comparison images
+./tools/create_comparison.sh hello_world
+```
+
+## Tools
+
+### port_gpui_example.py
 
 Generates a complete example directory from a GPUI example.
 
@@ -30,80 +50,113 @@ make list-gpui
 
 # Generate example directory with Zig skeleton
 make port-gpui EXAMPLE=shadow
-# Creates: examples/gpui_ports/shadow/
-#   - shadow.zig (ZapUI skeleton)
-#   - shadow.rs (original Rust)
-#   - REPORT.md (side-by-side comparison report)
-#   - screenshots/ (for visual comparisons)
 ```
 
-### What it does
+Creates:
+- `shadow.zig` - ZapUI skeleton
+- `shadow.rs` - Original Rust source
+- `REPORT.md` - API comparison report
+- `screenshots/` - For visual comparisons
 
-1. Fetches the GPUI example source code
-2. Analyzes complexity and warns about unsupported features
-3. Translates div() method chains to Zig
-4. Extracts colors used
-5. Generates working main() boilerplate
-6. Creates REPORT.md with side-by-side API comparison
+### compare_windows.bat (Windows)
 
-## compare_screenshots.sh
+Runs both GPUI and ZapUI examples on Windows for screenshot capture.
 
-Captures screenshots for visual comparison.
-
-```bash
-# Capture ZapUI screenshot
-./tools/compare_screenshots.sh hello_world
-
-# Screenshots saved to:
-# examples/gpui_ports/hello_world/screenshots/
+```batch
+REM On Windows (cmd or PowerShell)
+cd zapui\tools
+compare_windows.bat hello_world
 ```
 
-### Usage
+Prerequisites:
+- [ShareX](https://getsharex.com/) installed and running
+- Rust/Cargo installed
+- Zed repository cloned (for GPUI)
+- ZapUI built for Windows (`make windows`)
 
-1. Run the script - it builds and launches the ZapUI version
-2. Press Enter when the window is visible to capture
-3. For GPUI, manually capture on Windows/macOS and save as `gpui.png`
-4. If both exist, creates `comparison.png` (side-by-side)
+ShareX hotkeys:
+- `Ctrl+Shift+PrintScreen` - Capture active window
+- Save to `examples\gpui_ports\<name>\screenshots\`
 
-## Workflow
+### create_comparison.sh (WSL/Linux)
 
-### Porting a New Example
+Creates comparison images from captured screenshots.
 
 ```bash
-# 1. See what's available
+./tools/create_comparison.sh hello_world
+```
+
+Generates:
+- `comparison.png` - Side-by-side (GPUI | ZapUI)
+- `diff.png` - Pixel differences highlighted
+- `toggle.gif` - Animated toggle between both
+
+Requires: ImageMagick (`sudo apt install imagemagick`)
+
+## Complete Workflow
+
+### 1. Port a GPUI Example
+
+```bash
+# See available examples
 make list-gpui
 
-# 2. Generate skeleton
+# Generate skeleton
 make port-gpui EXAMPLE=gradient
 
-# 3. Edit the generated Zig file
+# Edit the generated Zig file
 vim examples/gpui_ports/gradient/gradient.zig
-
-# 4. Add build target to build.zig (copy from hello_world pattern)
-
-# 5. Build and test
-zig build gradient
-./zig-out/bin/gradient
-
-# 6. Capture screenshots
-./tools/compare_screenshots.sh gradient
 ```
 
-### Comparing with GPUI
+### 2. Build for Windows
 
 ```bash
-# 1. Capture ZapUI screenshot
-./tools/compare_screenshots.sh hello_world
+# Build specific example
+zig build gradient -Dtarget=x86_64-windows
 
-# 2. On Windows, run GPUI and screenshot manually:
-#    cd zed && cargo run --example hello_world -p gpui
-
-# 3. Save GPUI screenshot to:
-#    examples/gpui_ports/hello_world/screenshots/gpui.png
-
-# 4. Re-run to generate comparison:
-./tools/compare_screenshots.sh hello_world
+# Or build all examples
+make windows
 ```
+
+### 3. Capture Screenshots (Windows)
+
+```batch
+REM In Windows terminal
+cd C:\path\to\zapui\tools
+compare_windows.bat gradient
+```
+
+Follow the prompts:
+1. ZapUI window opens → Capture with ShareX → Save as `zapui.png`
+2. GPUI window opens → Capture with ShareX → Save as `gpui.png`
+
+### 4. Generate Comparison (WSL)
+
+```bash
+./tools/create_comparison.sh gradient
+```
+
+### 5. Review Results
+
+Check `examples/gpui_ports/gradient/screenshots/`:
+- `comparison.png` - Side-by-side view
+- `diff.png` - See pixel differences
+- `toggle.gif` - Flip between both versions
+
+## ShareX Setup
+
+For best results, configure ShareX:
+
+1. **Capture settings:**
+   - Task settings → Capture → Screenshot delay: 0.5s
+   - Include cursor: No
+
+2. **Hotkeys:**
+   - Capture active window: `Ctrl+Shift+PrintScreen`
+
+3. **After capture:**
+   - Task settings → Actions → Save to file
+   - Navigate to `zapui/examples/gpui_ports/<name>/screenshots/`
 
 ## Translation Status
 

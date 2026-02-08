@@ -1,4 +1,4 @@
-.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui
+.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui compare
 
 # Default target
 all: help
@@ -81,6 +81,10 @@ list-gpui:
 port-gpui:
 	@/usr/bin/python3 tools/port_gpui_example.py $(EXAMPLE)
 
+# Create comparison images from screenshots (usage: make compare EXAMPLE=hello_world)
+compare:
+	@./tools/create_comparison.sh $(EXAMPLE)
+
 # Show help
 help:
 	@echo "zapui Makefile targets:"
@@ -102,6 +106,14 @@ help:
 	@echo "GPUI Porting Tools:"
 	@echo "  make list-gpui      - List available GPUI examples"
 	@echo "  make port-gpui EXAMPLE=<name> - Generate Zig skeleton from GPUI example"
+	@echo "  make compare EXAMPLE=<name>   - Create comparison images from screenshots"
+	@echo ""
+	@echo "Windows Workflow:"
+	@echo "  1. make port-gpui EXAMPLE=<name>  - Generate skeleton"
+	@echo "  2. Edit examples/gpui_ports/<name>/<name>.zig"
+	@echo "  3. make windows                    - Build for Windows"
+	@echo "  4. Run: tools/compare_windows.bat <name>  (on Windows)"
+	@echo "  5. make compare EXAMPLE=<name>    - Generate comparison images"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean          - Remove build artifacts"
