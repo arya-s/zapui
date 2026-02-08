@@ -10,7 +10,7 @@
 | Phase 3: HarfBuzz Shaping | ✅ Done | Fixed kerning via hb_ft_font_changed() |
 | Phase 4: Color Emoji | ✅ Done | libpng enabled, mipmaps for smooth scaling |
 | Phase 5: Div Text Measurement | ✅ Done | Uses measureText() and getFontMetrics() |
-| Phase 6: Cleanup | 🔲 TODO | Remove remaining TODOs |
+| Phase 6: Cleanup | ✅ Done | stb_truetype removed, temp_bitmap retained for glyph copying |
 
 ---
 
@@ -70,13 +70,13 @@ Replace approximations in `div.zig`:
 - Line 471: `size * 0.35` → `metrics.ascent` from `getFontMetrics()`
 
 ### Phase 6: Cleanup
-Delete `src/vendor/stb_truetype.{c,h}`, remove from build.zig, remove temp_bitmap from TextSystem.
+Delete `src/vendor/stb_truetype.{c,h}`, remove from build.zig. Note: temp_bitmap is retained as it's needed for copying glyph data with proper stride handling before atlas upload.
 
 ## TextSystem API Changes
 
 ```
 Added fields:   ft_lib (Library), hb_buf (Buffer), color_atlas (?*GlAtlas)
-Removed fields: temp_bitmap, temp_bitmap_size
+Retained:       temp_bitmap (for stride-correct glyph copying)
 FontData:       stbtt_fontinfo → ft_face (Face) + hb_font (Font)
 ```
 
