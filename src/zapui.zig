@@ -41,6 +41,7 @@ pub const renderer = struct {
     pub const gl_renderer = @import("renderer/gl_renderer.zig");
     pub const d3d11_renderer = @import("renderer/d3d11_renderer.zig");
     pub const d3d11_text = @import("renderer/d3d11_text.zig");
+    pub const d3d11_scene = @import("renderer/d3d11_scene.zig");
 };
 
 // ============================================================================

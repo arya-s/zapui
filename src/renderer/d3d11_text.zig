@@ -1,15 +1,19 @@
 //! D3D11 Text Renderer
 //!
-//! Simple text rendering using FreeType for glyph rasterization and D3D11 for display.
-//! Caches ASCII glyphs (32-126) in a texture atlas for efficient rendering.
+//! Text rendering using FreeType for glyph rasterization and D3D11 for display.
+//! Caches glyphs in a texture atlas for efficient rendering.
+//!
+//! Can be used standalone or integrated with TextSystem for scene-based rendering.
 
 const std = @import("std");
 const freetype = @import("freetype");
 const d3d11_renderer = @import("d3d11_renderer.zig");
+const geometry = @import("../geometry.zig");
 
 const d3d11 = d3d11_renderer.d3d11;
 const D3D11Renderer = d3d11_renderer.D3D11Renderer;
 const SpriteInstance = d3d11_renderer.SpriteInstance;
+const Bounds = geometry.Bounds;
 
 pub const D3D11TextRenderer = struct {
     allocator: std.mem.Allocator,
@@ -198,6 +202,48 @@ pub const D3D11TextRenderer = struct {
             }
         }
         return width;
+    }
+
+    /// Get glyph info for scene-based rendering
+    /// Returns UV bounds in atlas coordinates (0-1)
+    pub const GlyphInfo = struct {
+        uv_bounds: Bounds(f32), // UV coordinates in atlas
+        pixel_bounds: Bounds(f32), // Pixel size and bearing
+        advance: f32,
+        valid: bool,
+    };
+
+    pub fn getGlyphInfo(self: *D3D11TextRenderer, char: u8) GlyphInfo {
+        if (char >= 128 or !self.glyphs[char].cached) {
+            return .{ .uv_bounds = Bounds(f32).zero, .pixel_bounds = Bounds(f32).zero, .advance = 0, .valid = false };
+        }
+
+        const g = self.glyphs[char];
+        const atlas_f: f32 = @floatFromInt(self.atlas_size);
+        const gw: f32 = @floatFromInt(g.w);
+        const gh: f32 = @floatFromInt(g.h);
+
+        return .{
+            .uv_bounds = Bounds(f32).fromXYWH(
+                @as(f32, @floatFromInt(g.x)) / atlas_f,
+                @as(f32, @floatFromInt(g.y)) / atlas_f,
+                gw / atlas_f,
+                gh / atlas_f,
+            ),
+            .pixel_bounds = Bounds(f32).fromXYWH(
+                @floatFromInt(g.bearing_x),
+                -@as(f32, @floatFromInt(g.bearing_y)),
+                gw,
+                gh,
+            ),
+            .advance = @floatFromInt(g.advance),
+            .valid = true,
+        };
+    }
+
+    /// Get atlas size
+    pub fn getAtlasSize(self: *D3D11TextRenderer) u32 {
+        return self.atlas_size;
     }
 
     /// Draw text centered at (cx, baseline)

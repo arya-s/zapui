@@ -16,6 +16,7 @@ const zaffy = zapui.zaffy;
 // Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
+const D3D11SceneContext = zapui.renderer.d3d11_scene.D3D11SceneContext;
 const Scene = zapui.scene.Scene;
 
 // Platform
@@ -58,11 +59,7 @@ const HelloWorld = struct {
     //                     .flex()
     //                     .gap_2()
     //                     .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                     .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
+    //                     ...
     //             )
     //     }
     // }
@@ -98,39 +95,6 @@ const HelloWorld = struct {
 };
 
 // ============================================================================
-// Text Rendering Helper
-// ============================================================================
-
-/// Draw text for all divs in tree using D3D11TextRenderer
-fn renderDivText(
-    d: *const div_mod.Div,
-    layout_tree: *const zaffy.Zaffy,
-    text_renderer: *D3D11TextRenderer,
-    renderer: *D3D11Renderer,
-    parent_x: f32,
-    parent_y: f32,
-) void {
-    const nid = d.node_id orelse return;
-    const lay = layout_tree.getLayout(nid);
-    const x = parent_x + lay.location.x;
-    const y = parent_y + lay.location.y;
-
-    if (d.text_content_val) |text| {
-        const text_w = text_renderer.measureText(text);
-        const tx = x + (lay.size.width - text_w) / 2;
-        const ty = y + lay.size.height / 2 + 6;
-        const tc = d.text_color_val.toRgba();
-        text_renderer.draw(renderer, text, tx, ty, .{ tc.r, tc.g, tc.b, tc.a });
-    }
-
-    for (d.children[0..d.child_count]) |maybe_child| {
-        if (maybe_child) |child| {
-            renderDivText(child, layout_tree, text_renderer, renderer, x, y);
-        }
-    }
-}
-
-// ============================================================================
 // Main
 // ============================================================================
 
@@ -161,6 +125,12 @@ pub fn main() !void {
 
     var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, font_data, 20);
     defer text_renderer.deinit();
+
+    // Scene context (combines renderer + text renderer)
+    var scene_ctx = D3D11SceneContext{
+        .renderer = &renderer,
+        .text_renderer = &text_renderer,
+    };
 
     // Layout & scene
     var layout = zaffy.Zaffy.init(allocator);
@@ -194,14 +164,8 @@ pub fn main() !void {
         renderer.beginFrame();
         renderer.clear(0.314, 0.314, 0.314, 1.0); // rgb(0x505050)
 
-        // Paint quads only (text rendered separately for D3D11)
-        scene.clear();
-        root.paintQuadsOnly(&scene, 0, 0, &layout);
-        scene.finish();
-        renderer.drawScene(&scene);
-
-        // Render text using D3D11TextRenderer
-        renderDivText(root, &layout, &text_renderer, &renderer, 0, 0);
+        // Single call to render complete UI (quads + text)
+        scene_ctx.renderDiv(root, &layout, &scene);
 
         renderer.present(true);
     }
