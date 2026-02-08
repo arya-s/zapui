@@ -30,6 +30,9 @@ pub const view = @import("view.zig");
 pub const zaffy = @import("zaffy.zig");
 pub const window = @import("window.zig");
 
+// Platform modules
+pub const platform = @import("platform/platform.zig");
+
 // Renderer modules
 pub const renderer = struct {
     pub const gl = @import("renderer/gl.zig");

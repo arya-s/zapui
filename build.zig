@@ -22,6 +22,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Get zigwin32 (Win32 API bindings for Windows platform)
+    const zigwin32_dep = b.dependency("zigwin32", .{});
+
     // Build HarfBuzz manually so we can share the freetype module (avoids module conflicts)
     const harfbuzz_upstream = b.dependency("harfbuzz", .{});
     const hb_lib = buildHarfbuzzLib(b, target, optimize, harfbuzz_upstream, freetype_dep);
@@ -58,6 +61,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "harfbuzz", .module = harfbuzz_mod },
             .{ .name = "zglfw", .module = zglfw_dep.module("root") },
             .{ .name = "zopengl", .module = zopengl_dep.module("root") },
+            .{ .name = "win32", .module = zigwin32_dep.module("win32") },
         },
     });
 
@@ -157,6 +161,28 @@ pub fn build(b: *std.Build) void {
     run_hello_world.step.dependOn(b.getInstallStep());
     const hello_world_step = b.step("hello-world", "Run the Hello World example (GPUI port)");
     hello_world_step.dependOn(&run_hello_world.step);
+
+    // Hello World Win32 (native Windows build)
+    const hello_world_win32_mod = b.createModule(.{
+        .root_source_file = b.path("examples/gpui_ports/hello_world/hello_world_win32.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_world_win32_mod.addImport("zapui", zapui_mod);
+
+    const hello_world_win32 = b.addExecutable(.{
+        .name = "hello_world_win32",
+        .root_module = hello_world_win32_mod,
+    });
+
+    hello_world_win32.linkLibC();
+    hello_world_win32.linkLibrary(freetype_dep.artifact("freetype"));
+    hello_world_win32.linkLibrary(hb_lib);
+
+    b.installArtifact(hello_world_win32);
+
+    const hello_world_win32_step = b.step("hello-world-win32", "Build Hello World for native Win32 (no GLFW)");
+    hello_world_win32_step.dependOn(b.getInstallStep());
 
     // Zaffy demo
     const zaffy_demo_mod = b.createModule(.{

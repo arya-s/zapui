@@ -13,10 +13,14 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 /// Platform-specific implementation
-pub const Backend = if (builtin.os.tag == .windows and @import("build_options").use_win32)
+/// For now, always use GLFW. Win32 backend can be selected explicitly.
+pub const Backend = @import("glfw/glfw_platform.zig");
+
+/// Win32 backend (for explicit use on Windows)
+pub const Win32Backend = if (builtin.os.tag == .windows)
     @import("windows/win32_platform.zig")
 else
-    @import("glfw/glfw_platform.zig");
+    void;
 
 /// Window handle
 pub const Window = Backend.Window;
