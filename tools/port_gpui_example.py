@@ -289,152 +289,238 @@ def generate_html_report(name: str, rust_code: str, zig_code: str, analysis: dic
 
 
 def generate_zig_skeleton(name: str, rust_code: str, analysis: dict) -> str:
-    """Generate a D3D11 Zig skeleton"""
+    """Generate a D3D11 Zig skeleton matching the Rust structure"""
     
     width, height = analysis['window_size']
     title = name.replace('_', ' ').title()
+    class_name = ''.join(word.capitalize() for word in name.split('_'))
     
+    # Generate color definitions
     color_defs = []
     for color in sorted(analysis['colors']):
         if color == 'red':
-            color_defs.append("const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };")
+            color_defs.append("const red = [4]f32{ 1, 0, 0, 1 };")
         elif color == 'green':
-            color_defs.append("const green_color = [4]f32{ 0.0, 0.5, 0.0, 1.0 }; // GPUI's green")
+            color_defs.append("const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()")
         elif color == 'blue':
-            color_defs.append("const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };")
+            color_defs.append("const blue = [4]f32{ 0, 0, 1, 1 };")
         elif color == 'yellow':
-            color_defs.append("const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };")
+            color_defs.append("const yellow = [4]f32{ 1, 1, 0, 1 };")
         elif color == 'black':
-            color_defs.append("const black_color = [4]f32{ 0.0, 0.0, 0.0, 1.0 };")
+            color_defs.append("const black = [4]f32{ 0, 0, 0, 1 };")
         elif color == 'white':
-            color_defs.append("const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };")
+            color_defs.append("const white = [4]f32{ 1, 1, 1, 1 };")
         else:
             try:
                 r = int(color[0:2], 16) / 255.0
                 g = int(color[2:4], 16) / 255.0
                 b = int(color[4:6], 16) / 255.0
-                color_defs.append(f"const color_{color} = [4]f32{{ {r:.3f}, {g:.3f}, {b:.3f}, 1.0 }};")
+                color_defs.append(f"// rgb(0x{color})")
             except:
-                color_defs.append(f"// const color_{color} = ... // TODO: parse this color")
+                pass
     
-    colors_section = '\n'.join(color_defs) if color_defs else "// No colors extracted"
-    
-    if analysis['warnings']:
-        warnings = '\n'.join(f'//   - {w}' for w in set(analysis['warnings']))
-    else:
-        warnings = "//   None - this example should be straightforward to port!"
+    colors_section = '\n'.join(color_defs) if color_defs else "// Define colors as needed"
     
     return f'''//! {title} - Port of GPUI's {name}.rs example
-//!
-//! Win32 + D3D11 implementation.
-//! See {name}.rs for original GPUI source.
 
 const std = @import("std");
 const zapui = @import("zapui");
 const freetype = @import("freetype");
 
 const d3d11 = zapui.renderer.d3d11_renderer.d3d11;
-const S_OK = zapui.renderer.d3d11_renderer.S_OK;
-
-const win32_platform = zapui.platform.Win32Backend;
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
 const SpriteInstance = zapui.renderer.d3d11_renderer.SpriteInstance;
+const Win32 = zapui.platform.Win32Backend;
 
-fn release(comptime T: type, obj: *T) void {{
-    _ = obj.IUnknown.vtable.Release(&obj.IUnknown);
+// Colors
+fn rgb(hex: u24) [4]f32 {{
+    return .{{
+        @as(f32, @floatFromInt((hex >> 16) & 0xFF)) / 255.0,
+        @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255.0,
+        @as(f32, @floatFromInt(hex & 0xFF)) / 255.0,
+        1.0,
+    }};
 }}
-
-// Embedded font
-const font_data = @embedFile("LiberationSans-Regular.ttf");
-
-// ============================================================================
-// Colors extracted from GPUI example
-// ============================================================================
-
 {colors_section}
 
 // ============================================================================
-// WARNINGS - Features needing manual implementation:
+// {class_name}
 // ============================================================================
-{warnings}
+
+const {class_name} = struct {{
+    // TODO: Add state fields from Rust struct
+
+    fn render(self: *{class_name}, renderer: *D3D11Renderer, text_renderer: anytype) void {{
+        _ = self;
+        _ = text_renderer;
+        
+        // TODO: Port the render() implementation from {name}.rs
+        // 
+        // GPUI patterns -> ZapUI:
+        //   div().bg(rgb(0xNNNNNN))     -> renderer.clear(rgb(0xNNNNNN))
+        //   div().size_8().bg(color)   -> quad(x, y, 32, color, border)
+        //   .child("text")             -> text_renderer.draw(renderer, "text", x, y, color)
+        //   format!("...", val)        -> std.fmt.bufPrint(&buf, "...", .{{val}})
+        
+        renderer.clear(0.2, 0.2, 0.2, 1.0);
+        
+        // Example quad:
+        // const quads = [_]QuadInstance{{
+        //     quad(100, 100, 32, red, white),
+        // }};
+        // renderer.drawQuads(&quads);
+    }}
+}};
+
+// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
+fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {{
+    return .{{
+        .bounds = .{{ x, y, size, size }},
+        .background_color = bg,
+        .border_color = border,
+        .border_widths = .{{ 1, 1, 1, 1 }},
+        .corner_radii = .{{ 6, 6, 6, 6 }},
+        .border_style = .{{ 1, 0, 0, 0 }}, // dashed
+        .content_mask = .{{ 0, 0, 0, 0 }},
+    }};
+}}
+
+// ============================================================================
+// Text Rendering (GPUI handles this internally)
+// ============================================================================
+
+const TextRenderer = struct {{
+    srv: *d3d11.ID3D11ShaderResourceView,
+    glyphs: [128]Glyph,
+    size: f32,
+
+    const Glyph = struct {{ u: f32, v: f32, w: f32, h: f32, bx: f32, by: f32, adv: f32 }};
+
+    fn init(alloc: std.mem.Allocator, renderer: *D3D11Renderer) !TextRenderer {{
+        const ft = try freetype.Library.init();
+        defer ft.deinit();
+        const face = try ft.initMemoryFace(@embedFile("LiberationSans-Regular.ttf"), 0);
+        defer face.deinit();
+        try face.setPixelSizes(0, 20);
+
+        const size: u32 = 256;
+        var data = try alloc.alloc(u8, size * size);
+        defer alloc.free(data);
+        @memset(data, 0);
+
+        var glyphs: [128]Glyph = undefined;
+        var px: u32 = 2;
+        for (32..127) |c| {{
+            const idx = face.getCharIndex(@intCast(c)) orelse continue;
+            face.loadGlyph(idx, .{{ .render = true }}) catch continue;
+            const g = face.handle.*.glyph;
+            const bmp = &g.*.bitmap;
+            if (bmp.width > 0 and bmp.rows > 0) {{
+                const src: [*]const u8 = @ptrCast(bmp.buffer);
+                const pitch: u32 = @intCast(if (bmp.pitch < 0) -bmp.pitch else bmp.pitch);
+                for (0..bmp.rows) |row| {{
+                    for (0..bmp.width) |col| {{
+                        data[(2 + row) * size + px + col] = src[row * pitch + col];
+                    }}
+                }}
+            }}
+            const sf: f32 = @floatFromInt(size);
+            glyphs[c] = .{{
+                .u = @as(f32, @floatFromInt(px)) / sf,
+                .v = 2.0 / sf,
+                .w = @as(f32, @floatFromInt(bmp.width)) / sf,
+                .h = @as(f32, @floatFromInt(bmp.rows)) / sf,
+                .bx = @floatFromInt(g.*.bitmap_left),
+                .by = @floatFromInt(g.*.bitmap_top),
+                .adv = @floatFromInt(g.*.advance.x >> 6),
+            }};
+            px += bmp.width + 2;
+        }}
+
+        var desc = std.mem.zeroes(d3d11.D3D11_TEXTURE2D_DESC);
+        desc.Width = size;
+        desc.Height = size;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = .R8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.BindFlags = .{{ .SHADER_RESOURCE = 1 }};
+        var sub = std.mem.zeroes(d3d11.D3D11_SUBRESOURCE_DATA);
+        sub.pSysMem = data.ptr;
+        sub.SysMemPitch = size;
+        var tex: ?*d3d11.ID3D11Texture2D = null;
+        _ = renderer.device.vtable.CreateTexture2D(renderer.device, &desc, &sub, @ptrCast(&tex));
+        var srv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
+        srv_desc.Format = .R8_UNORM;
+        srv_desc.ViewDimension = ._SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Anonymous.Texture2D.MipLevels = 1;
+        var srv: ?*d3d11.ID3D11ShaderResourceView = null;
+        _ = renderer.device.vtable.CreateShaderResourceView(renderer.device, @ptrCast(tex), &srv_desc, @ptrCast(&srv));
+
+        return .{{ .srv = srv.?, .glyphs = glyphs, .size = @floatFromInt(size) }};
+    }}
+
+    fn draw(self: *TextRenderer, renderer: *D3D11Renderer, str: []const u8, cx: f32, baseline: f32, color: [4]f32) void {{
+        var w: f32 = 0;
+        for (str) |c| {{
+            if (c < 128) w += self.glyphs[c].adv;
+        }}
+
+        var sprites: [64]SpriteInstance = undefined;
+        var n: usize = 0;
+        var x = cx - w / 2;
+        for (str) |c| {{
+            if (c >= 128) continue;
+            const g = self.glyphs[c];
+            if (g.w > 0) {{
+                sprites[n] = .{{
+                    .bounds = .{{ x + g.bx, baseline - g.by, g.w * self.size, g.h * self.size }},
+                    .uv_bounds = .{{ g.u, g.v, g.w, g.h }},
+                    .color = color,
+                    .content_mask = .{{ 0, 0, 0, 0 }},
+                }};
+                n += 1;
+            }}
+            x += g.adv;
+        }}
+        if (n > 0) renderer.drawSprites(sprites[0..n], self.srv, true);
+    }}
+}};
 
 // ============================================================================
 // Main
 // ============================================================================
 
 pub fn main() !void {{
-    const allocator = std.heap.page_allocator;
+    var platform = try Win32.init();
+    defer platform.deinit();
 
-    // Initialize FreeType for text rendering
-    const ft_lib = freetype.Library.init() catch {{
-        std.debug.print("Failed to initialize FreeType\\n", .{{}});
-        return error.FreeTypeInitFailed;
-    }};
-    defer ft_lib.deinit();
-
-    const face = ft_lib.initMemoryFace(font_data, 0) catch {{
-        std.debug.print("Failed to load font\\n", .{{}});
-        return error.FontLoadFailed;
-    }};
-    defer face.deinit();
-
-    face.setPixelSizes(0, 20) catch {{
-        std.debug.print("Failed to set font size\\n", .{{}});
-        return error.FontSizeFailed;
-    }};
-
-    // Initialize Win32 platform
-    var plat = try win32_platform.init();
-    defer plat.deinit();
-
-    // Create window (size from GPUI example)
-    const window = try win32_platform.createWindow(&plat, .{{
+    const window = try Win32.createWindow(&platform, .{{
         .width = {width},
         .height = {height},
-        .title = "{title} - ZapUI (Win32 + D3D11)",
+        .title = "{title}",
     }});
     defer window.destroy();
 
-    std.debug.print("{title} - ZapUI (Win32 + D3D11)\\n", .{{}});
-    std.debug.print("Press ESC to exit\\n", .{{}});
-
-    // Initialize D3D11 renderer
-    var renderer = D3D11Renderer.init(allocator, window.hwnd.?, {width}, {height}) catch |err| {{
-        std.debug.print("Failed to initialize D3D11: {{}}\\n", .{{err}});
-        return err;
-    }};
+    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, {width}, {height});
     defer renderer.deinit();
 
-    // TODO: Create glyph atlas for text rendering (see hello_world.zig for example)
+    var text_renderer = try TextRenderer.init(std.heap.page_allocator, &renderer);
 
-    // Main loop
+    var state = {class_name}{{}};
+
     while (!window.shouldClose()) {{
-        const events = window.pollEvents();
-
-        for (events) |event| {{
-            switch (event) {{
-                .key => |k| {{
-                    if (k.key == .escape and k.action == .press) {{
-                        return;
-                    }}
-                }},
-                .resize => |r| {{
-                    renderer.resize(r.width, r.height) catch {{}};
-                }},
+        for (window.pollEvents()) |e| {{
+            switch (e) {{
+                .key => |k| if (k.key == .escape) return,
+                .resize => |r| renderer.resize(r.width, r.height) catch {{}},
                 else => {{}},
             }}
         }}
 
-        // Render frame
         renderer.beginFrame();
-        renderer.clear(0.314, 0.314, 0.314, 1.0); // bg color 0x505050
-
-        // TODO: Implement rendering
-        // Use renderer.drawQuads() for rectangles
-        // Use renderer.drawSprites() for text
-        // See hello_world.zig for complete example
-
+        state.render(&renderer, &text_renderer);
         renderer.present(true);
     }}
 }}
@@ -510,16 +596,12 @@ def main():
     print(f"   - {name}.zig (D3D11 skeleton)")
     print(f"   - {name}.rs (original Rust source)")
     print(f"   - report.html (comparison report)")
-    print(f"   - LiberationSans-Regular.ttf (embedded font)")
-    print(f"   - screenshots/ (for visual comparisons)")
     print(f"\n   Next steps:")
-    print(f"   1. Add build target to build.zig (copy from hello_world)")
-    print(f"   2. Implement rendering in {name}.zig")
+    print(f"   1. Add build target to build.zig")
+    print(f"   2. Implement render() in {name}.zig")
     print(f"   3. make windows")
     print(f"   4. make capture-both EXAMPLE={name}")
     print(f"   5. make compare EXAMPLE={name}")
-    print(f"   6. Open report.html to view comparison")
-    print(f"\n   Reference: examples/gpui_ports/hello_world/hello_world.zig")
 
 
 if __name__ == '__main__':

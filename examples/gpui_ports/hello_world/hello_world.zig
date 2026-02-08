@@ -10,7 +10,7 @@ const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
 const SpriteInstance = zapui.renderer.d3d11_renderer.SpriteInstance;
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors (matching GPUI)
+// Colors
 fn rgb(hex: u24) [4]f32 {
     return .{
         @as(f32, @floatFromInt((hex >> 16) & 0xFF)) / 255.0,
@@ -19,11 +19,14 @@ fn rgb(hex: u24) [4]f32 {
         1.0,
     };
 }
-const white = [4]f32{ 1, 1, 1, 1 };
+// rgb(0x0000ff)
+// rgb(0x505050)
 const black = [4]f32{ 0, 0, 0, 1 };
-const red = [4]f32{ 1, 0, 0, 1 };
-const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green() is 0x008000
 const blue = [4]f32{ 0, 0, 1, 1 };
+// rgb(0xffffff)
+const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()
+const red = [4]f32{ 1, 0, 0, 1 };
+const white = [4]f32{ 1, 1, 1, 1 };
 const yellow = [4]f32{ 1, 1, 0, 1 };
 
 // ============================================================================
@@ -35,24 +38,19 @@ const HelloWorld = struct {
 
     fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: anytype) void {
         // div()
-        //     .flex()
-        //     .flex_col()
-        //     .gap_3()
+        //     .flex().flex_col().gap_3()
         //     .bg(rgb(0x505050))
         //     .size(px(500.0))
-        //     .justify_center()
-        //     .items_center()
-        //     .text_xl()
-        //     .text_color(rgb(0xffffff))
+        //     .justify_center().items_center()
+        //     .text_xl().text_color(rgb(0xffffff))
         //     .child(format!("Hello, {}!", &self.text))
-        //     .child(
-        //         div().flex().gap_2()
-        //             .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //             .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //             .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //             .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //             .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-        //             .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
+        //     .child(div().flex().gap_2()
+        //         .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+        //         .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+        //         .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+        //         .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+        //         .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+        //         .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
         //     )
 
         const bg = rgb(0x505050);
@@ -77,38 +75,32 @@ const HelloWorld = struct {
         // .child(div().flex().gap_2() ...)
         const row_y = y + text_xl + gap_3;
         const quads = [_]QuadInstance{
-            // .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
             quad(x + 0 * (size_8 + gap_2), row_y, size_8, red, white),
-            // .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
             quad(x + 1 * (size_8 + gap_2), row_y, size_8, green, white),
-            // .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
             quad(x + 2 * (size_8 + gap_2), row_y, size_8, blue, white),
-            // .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
             quad(x + 3 * (size_8 + gap_2), row_y, size_8, yellow, white),
-            // .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
             quad(x + 4 * (size_8 + gap_2), row_y, size_8, black, white),
-            // .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
             quad(x + 5 * (size_8 + gap_2), row_y, size_8, white, black),
         };
         renderer.drawQuads(&quads);
     }
 };
 
-// div().size_8().bg(color).border_1().border_dashed().rounded_md().border_color(border)
+// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
 fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
     return .{
         .bounds = .{ x, y, size, size },
         .background_color = bg,
         .border_color = border,
-        .border_widths = .{ 1, 1, 1, 1 }, // border_1
-        .corner_radii = .{ 6, 6, 6, 6 }, // rounded_md
-        .border_style = .{ 1, 0, 0, 0 }, // border_dashed
+        .border_widths = .{ 1, 1, 1, 1 },
+        .corner_radii = .{ 6, 6, 6, 6 },
+        .border_style = .{ 1, 0, 0, 0 }, // dashed
         .content_mask = .{ 0, 0, 0, 0 },
     };
 }
 
 // ============================================================================
-// Text rendering (GPUI handles this internally)
+// Text Rendering (GPUI handles this internally)
 // ============================================================================
 
 const TextRenderer = struct {
@@ -214,14 +206,6 @@ const TextRenderer = struct {
 // ============================================================================
 
 pub fn main() !void {
-    // Application::new().run(|cx: &mut App| {
-    //     let bounds = Bounds::centered(None, size(px(500.), px(500.0)), cx);
-    //     cx.open_window(WindowOptions { ... }, |_, cx| {
-    //         cx.new(|_| HelloWorld { text: "World".into() })
-    //     });
-    //     cx.activate(true);
-    // });
-
     var platform = try Win32.init();
     defer platform.deinit();
 
@@ -237,7 +221,7 @@ pub fn main() !void {
 
     var text_renderer = try TextRenderer.init(std.heap.page_allocator, &renderer);
 
-    var hello_world = HelloWorld{ .text = "World" };
+    var state = HelloWorld{ .text = "World" };
 
     while (!window.shouldClose()) {
         for (window.pollEvents()) |e| {
@@ -249,7 +233,7 @@ pub fn main() !void {
         }
 
         renderer.beginFrame();
-        hello_world.render(&renderer, &text_renderer);
+        state.render(&renderer, &text_renderer);
         renderer.present(true);
     }
 }
