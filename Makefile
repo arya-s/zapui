@@ -1,4 +1,4 @@
-.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui compare
+.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui compare capture
 
 # Default target
 all: help
@@ -40,26 +40,19 @@ hello-world:
 	zig build hello-world
 
 # Build all examples for Windows (cross-compile from Linux/WSL)
+# Uses 'zig build' without run steps to just compile
 windows:
-	zig build hello-world -Dtarget=x86_64-windows
-	zig build run -Dtarget=x86_64-windows
-	zig build zaffy-visual -Dtarget=x86_64-windows
+	zig build -Dtarget=x86_64-windows
 	@echo ""
 	@echo "Windows executables built in zig-out/bin/"
-	@echo "  - hello_world.exe"
-	@echo "  - playground.exe"
-	@echo "  - zaffy_visual.exe"
+	@ls -1 zig-out/bin/*.exe 2>/dev/null | xargs -n1 basename | sed 's/^/  - /'
 
 # Build all examples for Windows (release mode)
 windows-release:
-	zig build hello-world -Dtarget=x86_64-windows -Doptimize=ReleaseFast
-	zig build run -Dtarget=x86_64-windows -Doptimize=ReleaseFast
-	zig build zaffy-visual -Dtarget=x86_64-windows -Doptimize=ReleaseFast
+	zig build -Dtarget=x86_64-windows -Doptimize=ReleaseFast
 	@echo ""
 	@echo "Windows release executables built in zig-out/bin/"
-	@echo "  - hello_world.exe"
-	@echo "  - playground.exe"
-	@echo "  - zaffy_visual.exe"
+	@ls -1 zig-out/bin/*.exe 2>/dev/null | xargs -n1 basename | sed 's/^/  - /'
 
 # Clean build artifacts
 clean:
@@ -80,6 +73,10 @@ list-gpui:
 # Port a GPUI example (usage: make port-gpui EXAMPLE=hello_world)
 port-gpui:
 	@/usr/bin/python3 tools/port_gpui_example.py $(EXAMPLE)
+
+# Capture ZapUI screenshot (usage: make capture EXAMPLE=hello_world)
+capture:
+	@./tools/capture_zapui.sh $(EXAMPLE)
 
 # Create comparison images from screenshots (usage: make compare EXAMPLE=hello_world)
 compare:
@@ -106,14 +103,16 @@ help:
 	@echo "GPUI Porting Tools:"
 	@echo "  make list-gpui      - List available GPUI examples"
 	@echo "  make port-gpui EXAMPLE=<name> - Generate Zig skeleton from GPUI example"
-	@echo "  make compare EXAMPLE=<name>   - Create comparison images from screenshots"
+	@echo "  make capture EXAMPLE=<name>   - Capture ZapUI screenshot (WSL)"
+	@echo "  make compare EXAMPLE=<name>   - Create comparison images"
 	@echo ""
-	@echo "Windows Workflow:"
+	@echo "Screenshot Workflow (from WSL):"
 	@echo "  1. make port-gpui EXAMPLE=<name>  - Generate skeleton"
 	@echo "  2. Edit examples/gpui_ports/<name>/<name>.zig"
 	@echo "  3. make windows                    - Build for Windows"
-	@echo "  4. Run: tools/compare_windows.bat <name>  (on Windows)"
-	@echo "  5. make compare EXAMPLE=<name>    - Generate comparison images"
+	@echo "  4. make capture EXAMPLE=<name>    - Capture ZapUI screenshot"
+	@echo "  5. (manually capture GPUI screenshot as gpui.png)"
+	@echo "  6. make compare EXAMPLE=<name>    - Generate comparison images"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean          - Remove build artifacts"
