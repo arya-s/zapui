@@ -1,4 +1,4 @@
-# Capture a specific window by process name
+# Capture a specific window by process name using DWM
 # Usage: .\capture_window.ps1 -ProcessName "hello_world" -OutputPath "C:\temp\screenshot.png"
 
 param(
@@ -28,17 +28,13 @@ public class WindowCapture {
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     
     [DllImport("user32.dll")]
-    public static extern IntPtr GetWindowDC(IntPtr hWnd);
+    public static extern IntPtr GetForegroundWindow();
     
     [DllImport("user32.dll")]
-    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-    
-    [DllImport("gdi32.dll")]
-    public static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest, 
-        IntPtr hdcSource, int xSrc, int ySrc, int RasterOp);
+    public static extern bool BringWindowToTop(IntPtr hWnd);
     
     [DllImport("user32.dll")]
-    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
@@ -49,9 +45,12 @@ public class WindowCapture {
     }
     
     public const int SW_RESTORE = 9;
-    public const int SRCCOPY = 0x00CC0020;
-    public const uint PW_CLIENTONLY = 0x1;
-    public const uint PW_RENDERFULLCONTENT = 0x2;
+    public const int SW_SHOW = 5;
+    public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_SHOWWINDOW = 0x0040;
 }
 "@
 
@@ -70,8 +69,13 @@ if ($proc.MainWindowHandle -eq 0) {
 
 $hwnd = $proc.MainWindowHandle
 
-# Restore and focus the window
+# Force window to top using TOPMOST trick
 [WindowCapture]::ShowWindow($hwnd, [WindowCapture]::SW_RESTORE) | Out-Null
+[WindowCapture]::SetWindowPos($hwnd, [WindowCapture]::HWND_TOPMOST, 0, 0, 0, 0, 
+    [WindowCapture]::SWP_NOMOVE -bor [WindowCapture]::SWP_NOSIZE -bor [WindowCapture]::SWP_SHOWWINDOW) | Out-Null
+Start-Sleep -Milliseconds 200
+[WindowCapture]::SetWindowPos($hwnd, [WindowCapture]::HWND_NOTOPMOST, 0, 0, 0, 0,
+    [WindowCapture]::SWP_NOMOVE -bor [WindowCapture]::SWP_NOSIZE -bor [WindowCapture]::SWP_SHOWWINDOW) | Out-Null
 [WindowCapture]::SetForegroundWindow($hwnd) | Out-Null
 Start-Sleep -Milliseconds 500
 
@@ -84,20 +88,10 @@ $height = $rect.Bottom - $rect.Top
 
 Write-Host "Window size: ${width}x${height}"
 
-# Create bitmap and capture using PrintWindow (works better for hidden/overlapped windows)
+# Capture using CopyFromScreen (screen capture)
 $bitmap = New-Object System.Drawing.Bitmap($width, $height)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$hdc = $graphics.GetHdc()
-
-# Use PrintWindow with PW_RENDERFULLCONTENT for best results
-$result = [WindowCapture]::PrintWindow($hwnd, $hdc, 2)
-
-$graphics.ReleaseHdc($hdc)
-
-if (-not $result) {
-    Write-Warning "PrintWindow failed, falling back to screen capture"
-    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, [System.Drawing.Size]::new($width, $height))
-}
+$graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, [System.Drawing.Size]::new($width, $height))
 
 # Save
 $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)

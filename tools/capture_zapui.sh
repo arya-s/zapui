@@ -1,8 +1,10 @@
 #!/bin/bash
-# Capture screenshot of a ZapUI example on Windows
+# Capture screenshot of a ZapUI example on Windows using ShareX
 #
 # Usage:
 #   ./capture_zapui.sh hello_world
+#
+# Note: Don't interact with other windows while capturing
 
 set -e
 
@@ -23,43 +25,32 @@ if [ ! -f "$EXE" ]; then
 fi
 
 echo "=== Capturing ZapUI: $EXAMPLE ==="
-echo ""
 
 # Copy exe to Windows temp
-WIN_TEMP="/mnt/c/temp"
-mkdir -p "$WIN_TEMP"
-cp "$EXE" "$WIN_TEMP/"
+cp "$EXE" /mnt/c/temp/
 
-# Copy capture script
-cp "$SCRIPT_DIR/capture_window.ps1" "$WIN_TEMP/"
+# Get ShareX screenshot folder
+USERNAME=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r')
+SHAREX_FOLDER="/mnt/c/Users/$USERNAME/Documents/ShareX/Screenshots"
 
-echo "Launching $EXAMPLE.exe..."
+echo "Launching ${EXAMPLE}.exe..."
 powershell.exe -Command "Start-Process 'C:\temp\\${EXAMPLE}.exe'"
-
-# Wait for window to appear
 sleep 2
 
-echo "Capturing window..."
-WIN_OUTPUT="C:\\temp\\zapui_screenshot.png"
+echo "Capturing..."
+"/mnt/c/Program Files/ShareX/ShareX.exe" -ActiveWindow -silent &
+sleep 2
 
-powershell.exe -ExecutionPolicy Bypass -File "C:\\temp\\capture_window.ps1" -ProcessName "$EXAMPLE" -OutputPath "$WIN_OUTPUT"
+echo "Closing..."
+taskkill.exe /IM "${EXAMPLE}.exe" /F 2>/dev/null || true
+sleep 1
 
-# Copy screenshot back
-if [ -f "/mnt/c/temp/zapui_screenshot.png" ]; then
-    cp "/mnt/c/temp/zapui_screenshot.png" "$SCREENSHOTS_DIR/zapui.png"
-    echo ""
-    echo "✅ Screenshot saved: $SCREENSHOTS_DIR/zapui.png"
-    ls -la "$SCREENSHOTS_DIR/zapui.png"
+# Find most recent screenshot
+NEWEST=$(find "$SHAREX_FOLDER" -name "*.png" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+
+if [ -n "$NEWEST" ]; then
+    cp "$NEWEST" "$SCREENSHOTS_DIR/zapui.png"
+    echo "✅ Saved: $SCREENSHOTS_DIR/zapui.png"
 else
-    echo ""
     echo "❌ Screenshot not found"
 fi
-
-# Kill the app
-echo "Closing window..."
-taskkill.exe /IM "${EXAMPLE}.exe" /F 2>/dev/null || true
-
-# Cleanup
-rm -f "$WIN_TEMP/${EXAMPLE}.exe" 2>/dev/null || true
-rm -f "$WIN_TEMP/capture_window.ps1" 2>/dev/null || true
-rm -f "$WIN_TEMP/zapui_screenshot.png" 2>/dev/null || true
