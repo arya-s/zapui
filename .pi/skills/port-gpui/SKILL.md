@@ -85,6 +85,18 @@ make compare EXAMPLE=<name>
 
 Creates diff.png, toggle.gif, and updates report.html.
 
+### 7. View results
+
+Open the HTML report in a browser:
+```
+examples/gpui_ports/<name>/report.html
+```
+
+Or on Windows:
+```bash
+explorer.exe "$(wslpath -w examples/gpui_ports/<name>/report.html)"
+```
+
 ## Example: hello_world
 
 **Rust (GPUI):**
