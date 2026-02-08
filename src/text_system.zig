@@ -1,4 +1,4 @@
-//! Text rendering system for zapui using FreeType.
+//! Text rendering system for zapui using FreeType + HarfBuzz.
 //! Handles font loading, glyph rasterization, and text shaping.
 
 const std = @import("std");
@@ -6,6 +6,7 @@ const geometry = @import("geometry.zig");
 const color = @import("color.zig");
 const atlas_mod = @import("renderer/atlas.zig");
 const freetype = @import("freetype");
+const harfbuzz = @import("harfbuzz");
 
 const Allocator = std.mem.Allocator;
 const Pixels = geometry.Pixels;
@@ -18,6 +19,8 @@ const AtlasTile = atlas_mod.AtlasTile;
 
 const FT_Library = freetype.Library;
 const FT_Face = freetype.Face;
+const HB_Buffer = harfbuzz.Buffer;
+const HB_Font = harfbuzz.Font;
 
 /// Font identifier
 pub const FontId = u32;
@@ -122,30 +125,38 @@ const CachedGlyph = struct {
 const FontData = struct {
     data: []const u8, // Raw TTF data (must stay alive)
     face: FT_Face,
+    hb_font: HB_Font,
     owned: bool, // Whether we own the data buffer
 
     /// Cached metrics for different sizes (size_x10 -> metrics)
     cached_metrics: std.AutoHashMapUnmanaged(u32, FontMetrics) = .{},
 };
 
-/// Text rendering system using FreeType
+/// Text rendering system using FreeType + HarfBuzz
 pub const TextSystem = struct {
     allocator: Allocator,
     ft_lib: FT_Library,
+    hb_buf: HB_Buffer,
     fonts: std.ArrayListUnmanaged(FontData),
     glyph_cache: std.AutoHashMapUnmanaged(GlyphCacheKey, CachedGlyph),
     atlas: ?*GlAtlas,
     temp_bitmap: []u8,
     temp_bitmap_size: usize,
 
-    const TEMP_BITMAP_SIZE = 512 * 512; // Larger buffer for FreeType
+    const TEMP_BITMAP_SIZE = 512 * 512;
 
     pub fn init(allocator: Allocator) !TextSystem {
         const ft_lib = FT_Library.init() catch return error.FreeTypeInitFailed;
+        errdefer ft_lib.deinit();
+
+        var hb_buf = HB_Buffer.create() catch return error.HarfBuzzInitFailed;
+        errdefer hb_buf.destroy();
+
         const temp = try allocator.alloc(u8, TEMP_BITMAP_SIZE);
         return .{
             .allocator = allocator,
             .ft_lib = ft_lib,
+            .hb_buf = hb_buf,
             .fonts = .{},
             .glyph_cache = .{},
             .atlas = null,
@@ -156,6 +167,7 @@ pub const TextSystem = struct {
 
     pub fn deinit(self: *TextSystem) void {
         for (self.fonts.items) |*font| {
+            font.hb_font.destroy();
             font.face.deinit();
             font.cached_metrics.deinit(self.allocator);
             if (font.owned) {
@@ -165,6 +177,7 @@ pub const TextSystem = struct {
         self.fonts.deinit(self.allocator);
         self.glyph_cache.deinit(self.allocator);
         self.allocator.free(self.temp_bitmap);
+        self.hb_buf.destroy();
         self.ft_lib.deinit();
     }
 
@@ -199,10 +212,17 @@ pub const TextSystem = struct {
             // Font might not have Unicode charmap, continue anyway
         };
 
+        // Create HarfBuzz font from FreeType face
+        const hb_font = harfbuzz.freetype.createFont(face.handle) catch {
+            if (owned) self.allocator.free(data);
+            return error.HarfBuzzFontFailed;
+        };
+
         const id: FontId = @intCast(self.fonts.items.len);
         try self.fonts.append(self.allocator, .{
             .data = data,
             .face = face,
+            .hb_font = hb_font,
             .owned = owned,
         });
         return id;
@@ -252,8 +272,7 @@ pub const TextSystem = struct {
         return metrics;
     }
 
-    /// Shape text into glyphs (basic left-to-right shaping)
-    /// Note: This is simple codepoint-by-codepoint shaping. Phase 3 will add HarfBuzz.
+    /// Shape text into glyphs using HarfBuzz
     pub fn shapeText(self: *TextSystem, text: []const u8, font_id: FontId, size: Pixels) !ShapedRun {
         if (font_id >= self.fonts.items.len) {
             return error.InvalidFont;
@@ -262,92 +281,55 @@ pub const TextSystem = struct {
         var font = &self.fonts.items[font_id];
         const metrics = self.getFontMetrics(font_id, size);
 
-        // Set pixel size for this shaping operation
+        // Set pixel size for shaping
         font.face.setPixelSizes(0, @intFromFloat(size)) catch return error.InvalidFont;
 
-        // Count codepoints
-        var codepoint_count: usize = 0;
-        var iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
-        while (iter.nextCodepoint()) |_| {
-            codepoint_count += 1;
-        }
+        // Reset and configure HarfBuzz buffer
+        self.hb_buf.reset();
+        self.hb_buf.addUTF8(text);
+        self.hb_buf.guessSegmentProperties();
 
-        // Allocate glyphs
-        const glyphs = try self.allocator.alloc(ShapedGlyph, codepoint_count);
+        // Shape the text
+        harfbuzz.shape(font.hb_font, self.hb_buf, null);
+
+        // Get shaped glyphs
+        const glyph_infos = self.hb_buf.getGlyphInfos();
+        const glyph_positions = self.hb_buf.getGlyphPositions() orelse return error.ShapingFailed;
+
+        // Allocate output glyphs
+        const glyphs = try self.allocator.alloc(ShapedGlyph, glyph_infos.len);
         errdefer self.allocator.free(glyphs);
 
-        // Shape glyphs
-        var x: Pixels = 0;
-        var i: usize = 0;
-        iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
-        var prev_glyph_index: ?u32 = null;
-
+        // Convert HarfBuzz output to our format
+        // HarfBuzz positions are in font units, scale by ppem
         const face_handle = font.face.handle;
-        const has_kerning = (face_handle.*.face_flags & 0x40) != 0; // FT_FACE_FLAG_KERNING
+        const upem: f32 = @floatFromInt(face_handle.*.units_per_EM);
+        const scale = size / upem;
 
-        while (iter.nextCodepoint()) |codepoint| {
-            const glyph_index = font.face.getCharIndex(codepoint) orelse 0;
-
-            // Load glyph to get metrics
-            font.face.loadGlyph(glyph_index, .{}) catch {
-                // Skip glyph if loading fails
-                glyphs[i] = .{
-                    .glyph_id = glyph_index,
-                    .codepoint = codepoint,
-                    .x_offset = 0,
-                    .y_offset = 0,
-                    .x_advance = 0,
-                    .y_advance = 0,
-                };
-                i += 1;
-                prev_glyph_index = glyph_index;
-                continue;
-            };
-
-            const glyph_slot = face_handle.*.glyph;
-            const glyph_metrics = glyph_slot.*.metrics;
-
-            // FreeType advance is in 26.6 fixed-point
-            const x_advance: Pixels = @as(Pixels, @floatFromInt(glyph_slot.*.advance.x)) / 64.0;
-            const left_bearing: Pixels = @as(Pixels, @floatFromInt(glyph_metrics.horiBearingX)) / 64.0;
-
-            // Apply kerning if available
-            var kern: Pixels = 0;
-            if (has_kerning) {
-                if (prev_glyph_index) |prev| {
-                    var delta: freetype.c.FT_Vector = undefined;
-                    const kern_result = freetype.c.FT_Get_Kerning(
-                        face_handle,
-                        prev,
-                        glyph_index,
-                        0, // FT_KERNING_DEFAULT
-                        &delta,
-                    );
-                    if (kern_result == 0) {
-                        kern = @as(Pixels, @floatFromInt(delta.x)) / 64.0;
-                    }
-                }
-            }
+        var total_advance: Pixels = 0;
+        for (glyph_infos, glyph_positions, 0..) |info, pos, i| {
+            const x_advance: Pixels = @as(Pixels, @floatFromInt(pos.x_advance)) * scale;
+            const y_advance: Pixels = @as(Pixels, @floatFromInt(pos.y_advance)) * scale;
+            const x_offset: Pixels = @as(Pixels, @floatFromInt(pos.x_offset)) * scale;
+            const y_offset: Pixels = @as(Pixels, @floatFromInt(pos.y_offset)) * scale;
 
             glyphs[i] = .{
-                .glyph_id = glyph_index,
-                .codepoint = codepoint,
-                .x_offset = left_bearing,
-                .y_offset = 0,
+                .glyph_id = info.codepoint, // After shaping, this is the glyph index
+                .codepoint = info.cluster, // Cluster maps back to original text
+                .x_offset = x_offset,
+                .y_offset = y_offset,
                 .x_advance = x_advance,
-                .y_advance = 0,
+                .y_advance = y_advance,
             };
 
-            x += kern + x_advance;
-            prev_glyph_index = glyph_index;
-            i += 1;
+            total_advance += x_advance;
         }
 
         return ShapedRun{
             .font_id = font_id,
             .font_size = size,
             .glyphs = glyphs,
-            .width = x,
+            .width = total_advance,
             .metrics = metrics,
         };
     }
@@ -466,8 +448,8 @@ pub const TextSystem = struct {
                 if (cached.pixel_bounds.size.width > 0 and cached.pixel_bounds.size.height > 0) {
                     try scene.insertMonoSprite(.{
                         .bounds = Bounds(Pixels).fromXYWH(
-                            glyph_x + cached.pixel_bounds.origin.x,
-                            y + cached.pixel_bounds.origin.y,
+                            glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x,
+                            y + glyph.y_offset + cached.pixel_bounds.origin.y,
                             cached.pixel_bounds.size.width,
                             cached.pixel_bounds.size.height,
                         ),
@@ -480,53 +462,11 @@ pub const TextSystem = struct {
         }
     }
 
-    /// Measure text width
+    /// Measure text width using HarfBuzz shaping
     pub fn measureText(self: *TextSystem, text: []const u8, font_id: FontId, size: Pixels) Pixels {
-        if (font_id >= self.fonts.items.len) return 0;
-
-        var font = &self.fonts.items[font_id];
-
-        // Set pixel size
-        font.face.setPixelSizes(0, @intFromFloat(size)) catch return 0;
-
-        var width: Pixels = 0;
-        var iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
-        var prev_glyph_index: ?u32 = null;
-
-        const face_handle = font.face.handle;
-        const has_kerning = (face_handle.*.face_flags & 0x40) != 0;
-
-        while (iter.nextCodepoint()) |codepoint| {
-            const glyph_index = font.face.getCharIndex(codepoint) orelse 0;
-
-            // Load glyph to get advance
-            font.face.loadGlyph(glyph_index, .{}) catch continue;
-
-            const glyph_slot = face_handle.*.glyph;
-            const x_advance: Pixels = @as(Pixels, @floatFromInt(glyph_slot.*.advance.x)) / 64.0;
-
-            // Apply kerning
-            if (has_kerning) {
-                if (prev_glyph_index) |prev| {
-                    var delta: freetype.c.FT_Vector = undefined;
-                    const kern_result = freetype.c.FT_Get_Kerning(
-                        face_handle,
-                        prev,
-                        glyph_index,
-                        0,
-                        &delta,
-                    );
-                    if (kern_result == 0) {
-                        width += @as(Pixels, @floatFromInt(delta.x)) / 64.0;
-                    }
-                }
-            }
-
-            width += x_advance;
-            prev_glyph_index = glyph_index;
-        }
-
-        return width;
+        var run = self.shapeText(text, font_id, size) catch return 0;
+        defer self.freeShapedRun(&run);
+        return run.width;
     }
 };
 
