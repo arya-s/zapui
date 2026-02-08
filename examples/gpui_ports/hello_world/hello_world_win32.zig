@@ -210,11 +210,17 @@ pub fn main() !void {
         
         // Draw colored boxes like in hello_world
         // size_8 = 32px (2rem), gap_2 = 8px (0.5rem)
+        // Layout: text_xl (20px line height ~24px) + gap_3 (12px) + boxes (32px) = 68px total
+        // Vertically centered means offset by -34px from center for text, +34px for boxes bottom
         const box_size: f32 = 32;
-        const gap: f32 = 8;
+        const gap: f32 = 8;  // gap_2 between boxes
+        const gap_3: f32 = 12; // gap_3 between text and boxes
+        const text_height: f32 = 24; // approximate text line height
+        const total_content_height = text_height + gap_3 + box_size;
+        const content_start_y = container_y + (container_size - total_content_height) / 2;
         const total_width = 6 * box_size + 5 * gap;
         const boxes_x = container_x + (container_size - total_width) / 2;
-        const boxes_y = container_y + container_size / 2 + 20;
+        const boxes_y = content_start_y + text_height + gap_3;
         
         var quads: [7]QuadInstance = undefined;
         
@@ -305,8 +311,8 @@ pub fn main() !void {
         }
         
         const text_x = container_x + (container_size - text_width) / 2;
-        const text_y = container_y + container_size / 2 - 30;
-        const baseline_y = text_y + 24; // Font size
+        const text_y = content_start_y;
+        const baseline_y = text_y + 20; // text_xl font size baseline
         
         var sprites: [text.len]SpriteInstance = undefined;
         var cursor_x = text_x;
