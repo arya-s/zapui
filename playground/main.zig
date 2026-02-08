@@ -189,13 +189,16 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
     
     const rem: Pixels = 16.0;
     
-    // Header
+    // Header - full width with centered text
     const header = div()
+        .w(px(width))
         .h(px(70))
         .bg(C.bg_card)
         .justify_center()
-        .px(px(24))
-        .child(div().child_text("ZapUI Div API Demo").text_2xl().text_color(C.primary));
+        .items_center()
+        .child_text("ZapUI Div API Demo")
+        .text_2xl()
+        .text_color(C.primary);
     
     // Buttons section
     const btn_section = v_flex().gap(px(12))
