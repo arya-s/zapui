@@ -284,6 +284,9 @@ pub const TextSystem = struct {
         // Set pixel size for shaping
         font.face.setPixelSizes(0, @intFromFloat(size)) catch return error.InvalidFont;
 
+        // Notify HarfBuzz that the FreeType face changed size
+        harfbuzz.freetype.fontChanged(font.hb_font);
+
         // Reset and configure HarfBuzz buffer
         self.hb_buf.reset();
         self.hb_buf.addUTF8(text);
@@ -300,18 +303,14 @@ pub const TextSystem = struct {
         const glyphs = try self.allocator.alloc(ShapedGlyph, glyph_infos.len);
         errdefer self.allocator.free(glyphs);
 
-        // Convert HarfBuzz output to our format
-        // HarfBuzz positions are in font units, scale by ppem
-        const face_handle = font.face.handle;
-        const upem: f32 = @floatFromInt(face_handle.*.units_per_EM);
-        const scale = size / upem;
-
+        // After calling hb_ft_font_changed, HarfBuzz positions are in 26.6 fixed-point
+        // (same as FreeType), so divide by 64 to get pixels
         var total_advance: Pixels = 0;
         for (glyph_infos, glyph_positions, 0..) |info, pos, i| {
-            const x_advance: Pixels = @as(Pixels, @floatFromInt(pos.x_advance)) * scale;
-            const y_advance: Pixels = @as(Pixels, @floatFromInt(pos.y_advance)) * scale;
-            const x_offset: Pixels = @as(Pixels, @floatFromInt(pos.x_offset)) * scale;
-            const y_offset: Pixels = @as(Pixels, @floatFromInt(pos.y_offset)) * scale;
+            const x_advance: Pixels = @as(Pixels, @floatFromInt(pos.x_advance)) / 64.0;
+            const y_advance: Pixels = @as(Pixels, @floatFromInt(pos.y_advance)) / 64.0;
+            const x_offset: Pixels = @as(Pixels, @floatFromInt(pos.x_offset)) / 64.0;
+            const y_offset: Pixels = @as(Pixels, @floatFromInt(pos.y_offset)) / 64.0;
 
             glyphs[i] = .{
                 .glyph_id = info.codepoint, // After shaping, this is the glyph index

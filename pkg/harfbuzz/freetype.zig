@@ -11,6 +11,7 @@ const Error = @import("errors.zig").Error;
 extern fn hb_ft_face_create_referenced(ft_face: freetype.c.FT_Face) ?*c.hb_face_t;
 extern fn hb_ft_font_create_referenced(ft_face: freetype.c.FT_Face) ?*c.hb_font_t;
 extern fn hb_ft_font_get_face(font: ?*c.hb_font_t) freetype.c.FT_Face;
+extern fn hb_ft_font_changed(font: ?*c.hb_font_t) void;
 
 /// Creates an hb_face_t face object from the specified FT_Face.
 ///
@@ -44,6 +45,16 @@ pub fn createFont(face: freetype.c.FT_Face) Error!Font {
 /// for FreeType font functions and does not require this function to be used.
 pub fn setFontFuncs(font: Font) void {
     c.hb_ft_font_set_funcs(font.handle);
+}
+
+/// Refreshes the state of the hb_font_t font object after the underlying
+/// FT_Face has been modified (e.g., after calling FT_Set_Char_Size or
+/// FT_Set_Pixel_Sizes).
+///
+/// This function should be called after changing the size of the FreeType
+/// face to ensure HarfBuzz uses the updated metrics.
+pub fn fontChanged(font: Font) void {
+    hb_ft_font_changed(font.handle);
 }
 
 test {

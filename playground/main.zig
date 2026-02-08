@@ -323,7 +323,7 @@ pub fn main() !void {
         return;
     };
     defer text_system.deinit();
-    _ = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch {
+    _ = text_system.loadFontFile("assets/fonts/JetBrainsMono-Regular.ttf") catch {
         std.debug.print("Failed to load font\n", .{});
         return;
     };
