@@ -1,6 +1,9 @@
-# Port GPUI Example to ZapUI
+---
+name: port-gpui
+description: Port GPUI (Rust) examples to ZapUI (Zig) using Win32 + D3D11. Use when porting Zed's GPUI examples, creating visual comparisons between GPUI and ZapUI, or implementing D3D11 rendering that matches GPUI output.
+---
 
-Use this skill when porting a GPUI (Rust) example to ZapUI (Zig).
+# Port GPUI Example to ZapUI
 
 ## Workflow
 
