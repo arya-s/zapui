@@ -169,6 +169,120 @@ def translate_div_chain(rust_chain: str) -> str:
     return zig_chain
 
 
+def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysis: dict) -> str:
+    """Generate a side-by-side comparison report"""
+    
+    # Extract the main render function from Rust
+    render_match = re.search(r'fn render\([^)]*\)[^{]*\{(.*?)\n    \}', rust_code, re.DOTALL)
+    rust_render = render_match.group(1).strip() if render_match else "// Could not extract render function"
+    
+    # Simplify for display - get just the div chain
+    div_match = re.search(r'(div\(\)[^;]+)', rust_render, re.DOTALL)
+    rust_div_chain = div_match.group(1).strip() if div_match else rust_render[:500]
+    
+    warnings_list = '\n'.join(f'- {w}' for w in set(analysis['warnings'])) if analysis['warnings'] else 'None - straightforward port!'
+    
+    return f'''# {name.replace('_', ' ').title()} - Comparison Report
+
+## Overview
+
+| Metric | Value |
+|--------|-------|
+| Example | `{name}` |
+| Rust LOC | {len(rust_code.splitlines())} |
+| Div chains found | {len(analysis['div_chains'])} |
+| Colors used | {len(analysis['colors'])} |
+| Warnings | {len(analysis['warnings'])} |
+
+## Translation Warnings
+
+{warnings_list}
+
+## Side-by-Side API Comparison
+
+### Rust (GPUI)
+
+```rust
+{rust_div_chain[:1500]}
+```
+
+### Zig (ZapUI)
+
+```zig
+// See {name}.zig for full implementation
+// Key differences:
+// - Text children: .child("text") → .child(div().child_text("text"))
+// - Format strings: format!() → std.fmt.bufPrint()
+// - Colors: gpui::red() → red (const)
+// - Method chains are nearly identical
+```
+
+## API Mapping
+
+| GPUI (Rust) | ZapUI (Zig) | Status |
+|-------------|-------------|--------|
+| `div()` | `div()` | ✅ |
+| `.flex()` | `.flex()` | ✅ |
+| `.flex_col()` | `.flex_col()` | ✅ |
+| `.flex_row()` | `.flex_row()` | ✅ |
+| `.gap_N()` | `.gap_N()` | ✅ |
+| `.bg(rgb(0x...))` | `.bg(zapui.rgb(0x...))` | ✅ |
+| `.bg(gpui::red())` | `.bg(red)` | ✅ |
+| `.size(px(N))` | `.size(px(N))` | ✅ |
+| `.size_N()` | `.size_N()` | ✅ |
+| `.w(px(N))` | `.w(px(N))` | ✅ |
+| `.h(px(N))` | `.h(px(N))` | ✅ |
+| `.justify_center()` | `.justify_center()` | ✅ |
+| `.items_center()` | `.items_center()` | ✅ |
+| `.border_N()` | `.border_N()` | ✅ |
+| `.border_color(...)` | `.border_color(...)` | ✅ |
+| `.border_dashed()` | `.border_dashed()` | ✅ |
+| `.rounded_md()` | `.rounded_md()` | ✅ |
+| `.shadow_lg()` | `.shadow_lg()` | ✅ |
+| `.text_xl()` | `.text_xl()` | ✅ |
+| `.text_color(...)` | `.text_color(...)` | ✅ |
+| `.child("text")` | `.child(div().child_text("text"))` | ⚠️ Wrapper needed |
+| `.child(element)` | `.child(element)` | ✅ |
+| `.on_click(...)` | *not yet* | ❌ |
+| `.opacity(N)` | *not yet* | ❌ |
+| `canvas(...)` | *not yet* | ❌ |
+| `img(...)` | *not yet* | ❌ |
+| `svg(...)` | *not yet* | ❌ |
+
+## Screenshots
+
+After running both versions, screenshots will be saved here:
+
+| Version | Screenshot |
+|---------|------------|
+| GPUI (Rust) | `screenshots/gpui.png` |
+| ZapUI (Zig) | `screenshots/zapui.png` |
+| Comparison | `screenshots/comparison.png` |
+
+## Build Instructions
+
+### ZapUI (Zig)
+
+```bash
+# From zapui root directory
+zig build {name}
+./zig-out/bin/{name}
+```
+
+### GPUI (Rust)
+
+```bash
+# From zed repository
+cargo run --example {name} -p gpui
+```
+
+## Links
+
+- [Original GPUI source](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs)
+- [ZapUI Documentation](../../README.md)
+'''
+
+
 def generate_zig_skeleton(name: str, rust_code: str, analysis: dict) -> str:
     """Generate a Zig skeleton from analyzed Rust code"""
     
@@ -366,48 +480,25 @@ def main():
     with open(rust_file, 'w') as f:
         f.write(rust_code)
     
-    # Create README for this example
-    readme_file = f"{example_dir}/README.md"
-    with open(readme_file, 'w') as f:
-        f.write(f"""# {name.replace('_', ' ').title()}
-
-Port of GPUI's `{name}.rs` example to ZapUI.
-
-## Files
-
-- `{name}.zig` - ZapUI port (Zig)
-- `{name}.rs` - Original GPUI source (Rust)
-- `screenshots/` - Visual comparison (after running)
-
-## Status
-
-{'⚠️ Needs work - see warnings below' if analysis['warnings'] else '✅ Should be straightforward to port'}
-
-### Warnings
-{chr(10).join(f'- {w}' for w in set(analysis['warnings'])) if analysis['warnings'] else 'None'}
-
-## Build & Run
-
-```bash
-# Add build target to build.zig, then:
-zig build {name}
-./zig-out/bin/{name}
-```
-
-## Original
-
-- [View on GitHub](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs)
-""")
+    # Generate comparison report
+    report = generate_comparison_report(name, rust_code, zig_code, analysis)
+    report_file = f"{example_dir}/REPORT.md"
+    with open(report_file, 'w') as f:
+        f.write(report)
     
     # Create screenshots directory
     os.makedirs(f"{example_dir}/screenshots", exist_ok=True)
     
     print(f"\n✅ Generated example in {example_dir}/")
-    print(f"   - {name}.zig (ZapUI port)")
-    print(f"   - {name}.rs (original Rust)")
-    print(f"   - README.md (status & notes)")
-    print(f"   - screenshots/ (for comparisons)")
-    print(f"\n   Edit {output_file} and add to build.zig to compile.")
+    print(f"   - {name}.zig (ZapUI port skeleton)")
+    print(f"   - {name}.rs (original Rust source)")
+    print(f"   - REPORT.md (side-by-side comparison)")
+    print(f"   - screenshots/ (for visual comparisons)")
+    print(f"\n   Next steps:")
+    print(f"   1. Edit {output_file}")
+    print(f"   2. Add build target to build.zig")
+    print(f"   3. Run: zig build {name}")
+    print(f"   4. Compare: ./tools/compare_screenshots.sh {name}")
     print(f"\n   View original: https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs")
 
 

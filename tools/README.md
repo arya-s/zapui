@@ -9,11 +9,11 @@ examples/gpui_ports/
 ├── hello_world/
 │   ├── hello_world.zig    # ZapUI port
 │   ├── hello_world.rs     # Original GPUI source
-│   ├── README.md          # Status & notes
+│   ├── REPORT.md          # Side-by-side comparison report
 │   └── screenshots/
 │       ├── zapui.png      # ZapUI screenshot
 │       ├── gpui.png       # GPUI screenshot
-│       └── comparison.png # Side-by-side
+│       └── comparison.png # Side-by-side image
 ├── gradient/
 │   └── ...
 └── shadow/
@@ -33,8 +33,8 @@ make port-gpui EXAMPLE=shadow
 # Creates: examples/gpui_ports/shadow/
 #   - shadow.zig (ZapUI skeleton)
 #   - shadow.rs (original Rust)
-#   - README.md (status & warnings)
-#   - screenshots/ (empty, for comparisons)
+#   - REPORT.md (side-by-side comparison report)
+#   - screenshots/ (for visual comparisons)
 ```
 
 ### What it does
@@ -44,7 +44,7 @@ make port-gpui EXAMPLE=shadow
 3. Translates div() method chains to Zig
 4. Extracts colors used
 5. Generates working main() boilerplate
-6. Creates README with status
+6. Creates REPORT.md with side-by-side API comparison
 
 ## compare_screenshots.sh
 
