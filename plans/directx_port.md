@@ -55,7 +55,9 @@ src/
 - [x] Implement keyboard/mouse input
 
 ## Phase 4: DirectX 11 Implementation
-- [ ] Add D3D11 API bindings
+- [x] Add D3D11 API bindings (via zigwin32)
+- [x] D3D11 device, swap chain, render target view
+- [x] Clear screen, present, resize
 - [ ] Port shaders to HLSL
 - [ ] Implement texture atlas on D3D11
 - [ ] Implement quad rendering
