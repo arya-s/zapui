@@ -54,7 +54,7 @@ src/
 - [x] Implement Win32 event loop
 - [x] Implement keyboard/mouse input
 
-## Phase 4: DirectX 11 Implementation
+## Phase 4: DirectX 11 Implementation ✅
 - [x] Add D3D11 API bindings (via zigwin32)
 - [x] D3D11 device, swap chain, render target view
 - [x] Clear screen, present, resize
@@ -63,7 +63,7 @@ src/
 - [x] Blend state and rasterizer state for alpha blending
 - [x] Implement sprite rendering with texture support
 - [x] Implement D3D11Atlas for GPU texture atlas
-- [ ] Integrate FreeType text rendering with D3D11
+- [x] FreeType text rendering with D3D11 (glyph rasterization to texture atlas)
 
 ## Phase 5: Integration & Testing
 - [x] Build system changes for platform selection
