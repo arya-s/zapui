@@ -169,6 +169,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     hello_world_win32_mod.addImport("zapui", zapui_mod);
+    hello_world_win32_mod.addImport("freetype", freetype_dep.module("freetype"));
 
     const hello_world_win32 = b.addExecutable(.{
         .name = "hello_world_win32",

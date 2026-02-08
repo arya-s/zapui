@@ -61,8 +61,9 @@ src/
 - [x] Port shaders to HLSL (quad.hlsl with SDF rounded corners, dashed borders)
 - [x] Implement quad rendering with StructuredBuffer instancing
 - [x] Blend state and rasterizer state for alpha blending
-- [ ] Implement texture atlas on D3D11
-- [ ] Implement text rendering
+- [x] Implement sprite rendering with texture support
+- [x] Implement D3D11Atlas for GPU texture atlas
+- [ ] Integrate FreeType text rendering with D3D11
 
 ## Phase 5: Integration & Testing
 - [x] Build system changes for platform selection
