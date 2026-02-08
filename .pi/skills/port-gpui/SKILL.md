@@ -166,13 +166,25 @@ pub fn main() !void {
     var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Text systems
+    // Shared glyph cache (FreeType rasterization)
+    var glyph_cache = try zapui.glyph_cache.GlyphCache.init(allocator);
+    defer glyph_cache.deinit();
+    const font_id = try glyph_cache.loadFont(font_data);
+
+    // Text system (for layout measurement)
     var text_system = try zapui.text_system.TextSystem.init(allocator);
     defer text_system.deinit();
     _ = try text_system.loadFontMem(font_data);
 
-    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, font_data, 20);
+    // Text renderer (uses shared glyph cache)
+    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, &glyph_cache, font_id, 20);
     defer text_renderer.deinit();
+
+    // Scene context (combines renderer + text renderer)
+    var scene_ctx = D3D11SceneContext{
+        .renderer = &renderer,
+        .text_renderer = &text_renderer,
+    };
 
     // Layout & scene
     var layout = zaffy.Zaffy.init(allocator);
@@ -189,24 +201,16 @@ pub fn main() !void {
         // Build UI
         div_mod.reset();
         var label_buf: [64]u8 = undefined;
-        const root = try state.render(allocator, &label_buf);
+        const root = state.render(&label_buf);
 
         // Layout
         try root.buildWithTextSystem(&layout, 16, &text_system);
         layout.computeLayoutWithSize(root.node_id.?, 500, 500);
 
-        // Render
+        // Render (single call for quads + text)
         renderer.beginFrame();
         renderer.clear(...);
-
-        scene.clear();
-        root.paint(&scene, &text_system, 0, 0, &layout, null, null);
-        scene.finish();
-        renderer.drawScene(&scene);
-
-        // Text (drawn separately for now)
-        drawTextForDiv(root, &layout, &text_renderer, &renderer, 0, 0);
-
+        scene_ctx.renderDiv(root, &layout, &scene);
         renderer.present(true);
     }
 }
