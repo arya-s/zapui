@@ -34,27 +34,43 @@ const yellow = [4]f32{ 1, 1, 0, 1 };
 const HelloWorld = struct {
     text: []const u8,
 
+    // Port of GPUI's Render trait implementation:
+    //
+    // div()
+    //     .flex().flex_col().gap_3()
+    //     .bg(rgb(0x505050))
+    //     .size(px(500.0))
+    //     .justify_center().items_center()
+    //     .text_xl().text_color(rgb(0xffffff))
+    //     .child(format!("Hello, {}!", &self.text))
+    //     .child(div().flex().gap_2()
+    //         .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //         .child(div().size_8().bg(gpui::green())...)
+    //         ...
+    //     )
+    //
     fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {
+        // div().bg(rgb(0x505050)).size(px(500.0))
         const bg = rgb(0x505050);
         renderer.clear(bg[0], bg[1], bg[2], bg[3]);
 
-        // Layout
-        const size_8: f32 = 32;
-        const gap_2: f32 = 8;
-        const gap_3: f32 = 12;
-        const text_xl: f32 = 20;
+        // Layout: .flex_col().gap_3().justify_center().items_center()
+        const size_8: f32 = 32;   // .size_8()
+        const gap_2: f32 = 8;     // .gap_2()
+        const gap_3: f32 = 12;    // .gap_3()
+        const text_xl: f32 = 20;  // .text_xl()
 
         const content_h = text_xl + gap_3 + size_8;
         const y = (500 - content_h) / 2;
         const row_w = 6 * size_8 + 5 * gap_2;
         const x = (500 - row_w) / 2;
 
-        // Text
+        // .child(format!("Hello, {}!", &self.text))
         var buf: [64]u8 = undefined;
         const label = std.fmt.bufPrint(&buf, "Hello, {s}!", .{self.text}) catch "Hello!";
         text_renderer.drawCentered(renderer, label, 250, y + 16, white);
 
-        // Colored boxes
+        // .child(div().flex().gap_2() ...)
         const row_y = y + text_xl + gap_3;
         const quads = [_]QuadInstance{
             quad(x + 0 * (size_8 + gap_2), row_y, size_8, red, white),
