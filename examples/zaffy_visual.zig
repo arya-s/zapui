@@ -5,7 +5,7 @@
 const std = @import("std");
 const zapui = @import("zapui");
 const zaffy = zapui.zaffy;
-const glfw = @cImport(@cInclude("GLFW/glfw3.h"));
+const zglfw = @import("zglfw");
 
 const WINDOW_WIDTH: f32 = 900;
 const WINDOW_HEIGHT: f32 = 700;
@@ -16,33 +16,31 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Initialize GLFW
-    if (glfw.glfwInit() == 0) {
+    zglfw.init() catch {
         std.debug.print("Failed to initialize GLFW\n", .{});
         return;
-    }
-    defer glfw.glfwTerminate();
+    };
+    defer zglfw.terminate();
 
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_OPENGL_PROFILE, glfw.GLFW_OPENGL_CORE_PROFILE);
-    glfw.glfwWindowHint(glfw.GLFW_OPENGL_FORWARD_COMPAT, 1);
+    zglfw.windowHint(.context_version_major, 3);
+    zglfw.windowHint(.context_version_minor, 3);
+    zglfw.windowHint(.opengl_profile, .opengl_core_profile);
+    zglfw.windowHint(.opengl_forward_compat, true);
 
-    const window = glfw.glfwCreateWindow(@intFromFloat(WINDOW_WIDTH), @intFromFloat(WINDOW_HEIGHT), "Zaffy Layout Demo", null, null);
-    if (window == null) {
+    const window = zglfw.Window.create(@intFromFloat(WINDOW_WIDTH), @intFromFloat(WINDOW_HEIGHT), "Zaffy Layout Demo", null, null) catch {
         std.debug.print("Failed to create window\n", .{});
         return;
-    }
-    defer glfw.glfwDestroyWindow(window);
+    };
+    defer window.destroy();
 
-    glfw.glfwMakeContextCurrent(window);
-    glfw.glfwSwapInterval(1);
+    zglfw.makeContextCurrent(window);
+    zglfw.swapInterval(1);
 
     // Load OpenGL functions
-    try zapui.loadGl(struct {
-        pub fn getProcAddress(name: [*:0]const u8) ?*anyopaque {
-            return @ptrCast(@constCast(glfw.glfwGetProcAddress(name)));
-        }
-    }.getProcAddress);
+    zapui.renderer.gl.loadGlFunctions(zglfw.getProcAddress) catch {
+        std.debug.print("Failed to load OpenGL functions\n", .{});
+        return;
+    };
 
     // Initialize renderer
     var renderer = try zapui.renderer.gl_renderer.GlRenderer.init(allocator);
@@ -171,20 +169,18 @@ pub fn main() !void {
     const Corners = zapui.geometry.Corners(f32);
 
     // Main loop
-    while (glfw.glfwWindowShouldClose(window) == 0) {
-        glfw.glfwPollEvents();
+    while (!window.shouldClose()) {
+        zglfw.pollEvents();
 
         // Check for ESC
-        if (glfw.glfwGetKey(window, glfw.GLFW_KEY_ESCAPE) == glfw.GLFW_PRESS) {
+        if (window.getKey(.escape) == .press) {
             break;
         }
 
         // Get mouse position for hover effects
-        var mx: f64 = 0;
-        var my: f64 = 0;
-        glfw.glfwGetCursorPos(window, &mx, &my);
-        const mouse_x: f32 = @floatCast(mx);
-        const mouse_y: f32 = @floatCast(my);
+        const cursor_pos = window.getCursorPos();
+        const mouse_x: f32 = @floatCast(cursor_pos[0]);
+        const mouse_y: f32 = @floatCast(cursor_pos[1]);
         const mouse = Point.init(mouse_x, mouse_y);
 
         scene.clear();
@@ -275,6 +271,6 @@ pub fn main() !void {
         // Render
         renderer.clear(bg_color);
         try renderer.drawScene(&scene);
-        glfw.glfwSwapBuffers(window);
+        window.swapBuffers();
     }
 }

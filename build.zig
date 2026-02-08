@@ -11,6 +11,17 @@ pub fn build(b: *std.Build) void {
         .@"enable-libpng" = true,
     });
 
+    // Get zglfw (cross-platform GLFW)
+    const zglfw_dep = b.dependency("zglfw", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Get zopengl (cross-platform OpenGL bindings)
+    const zopengl_dep = b.dependency("zopengl", .{
+        .target = target,
+    });
+
     // Build HarfBuzz manually so we can share the freetype module (avoids module conflicts)
     const harfbuzz_upstream = b.dependency("harfbuzz", .{});
     const hb_lib = buildHarfbuzzLib(b, target, optimize, harfbuzz_upstream, freetype_dep);
@@ -45,11 +56,11 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "freetype", .module = freetype_dep.module("freetype") },
             .{ .name = "harfbuzz", .module = harfbuzz_mod },
+            .{ .name = "zglfw", .module = zglfw_dep.module("root") },
+            .{ .name = "zopengl", .module = zopengl_dep.module("root") },
         },
     });
 
-    // Add system library paths for OpenGL headers
-    zapui_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     zapui_mod.link_libc = true;
 
     // Library artifact (for linking)
@@ -95,6 +106,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     playground_mod.addImport("zapui", zapui_mod);
+    playground_mod.addImport("zglfw", zglfw_dep.module("root"));
+    playground_mod.addImport("zopengl", zopengl_dep.module("root"));
 
     // Playground executable for development testing
     const playground = b.addExecutable(.{
@@ -102,8 +115,8 @@ pub fn build(b: *std.Build) void {
         .root_module = playground_mod,
     });
 
-    // Link system libraries for playground (cross-platform)
-    linkGraphicsLibraries(playground, target);
+    // Link zglfw library
+    playground.linkLibrary(zglfw_dep.artifact("glfw"));
     playground.linkLibC();
     playground.linkLibrary(freetype_dep.artifact("freetype"));
     playground.linkLibrary(hb_lib);
@@ -125,13 +138,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     hello_world_mod.addImport("zapui", zapui_mod);
+    hello_world_mod.addImport("zglfw", zglfw_dep.module("root"));
+    hello_world_mod.addImport("zopengl", zopengl_dep.module("root"));
 
     const hello_world = b.addExecutable(.{
         .name = "hello_world",
         .root_module = hello_world_mod,
     });
 
-    linkGraphicsLibraries(hello_world, target);
+    hello_world.linkLibrary(zglfw_dep.artifact("glfw"));
     hello_world.linkLibC();
     hello_world.linkLibrary(freetype_dep.artifact("freetype"));
     hello_world.linkLibrary(hb_lib);
@@ -150,13 +165,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     zaffy_demo_mod.addImport("zapui", zapui_mod);
+    zaffy_demo_mod.addImport("zglfw", zglfw_dep.module("root"));
+    zaffy_demo_mod.addImport("zopengl", zopengl_dep.module("root"));
 
     const zaffy_demo = b.addExecutable(.{
         .name = "zaffy_demo",
         .root_module = zaffy_demo_mod,
     });
 
-    linkGraphicsLibraries(zaffy_demo, target);
+    zaffy_demo.linkLibrary(zglfw_dep.artifact("glfw"));
     zaffy_demo.linkLibC();
     zaffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
     zaffy_demo.linkLibrary(hb_lib);
@@ -175,13 +192,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     zaffy_visual_mod.addImport("zapui", zapui_mod);
+    zaffy_visual_mod.addImport("zglfw", zglfw_dep.module("root"));
+    zaffy_visual_mod.addImport("zopengl", zopengl_dep.module("root"));
 
     const zaffy_visual = b.addExecutable(.{
         .name = "zaffy_visual",
         .root_module = zaffy_visual_mod,
     });
 
-    linkGraphicsLibraries(zaffy_visual, target);
+    zaffy_visual.linkLibrary(zglfw_dep.artifact("glfw"));
     zaffy_visual.linkLibC();
     zaffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
     zaffy_visual.linkLibrary(hb_lib);
@@ -245,31 +264,4 @@ fn buildHarfbuzzLib(
     }
 
     return lib;
-}
-
-/// Link OpenGL and GLFW libraries based on target platform
-fn linkGraphicsLibraries(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
-    switch (target.result.os.tag) {
-        .windows => {
-            // Windows: use opengl32 and glfw3
-            compile.linkSystemLibrary("opengl32");
-            compile.linkSystemLibrary("glfw3");
-            compile.linkSystemLibrary("gdi32");
-            compile.linkSystemLibrary("user32");
-            compile.linkSystemLibrary("shell32");
-        },
-        .macos => {
-            // macOS: use frameworks
-            compile.linkFramework("OpenGL");
-            compile.linkFramework("Cocoa");
-            compile.linkFramework("IOKit");
-            compile.linkFramework("CoreVideo");
-            compile.linkSystemLibrary("glfw");
-        },
-        else => {
-            // Linux and others: use GL and glfw
-            compile.linkSystemLibrary("GL");
-            compile.linkSystemLibrary("glfw");
-        },
-    }
 }

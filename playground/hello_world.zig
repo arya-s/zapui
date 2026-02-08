@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const zapui = @import("zapui");
+const zglfw = @import("zglfw");
 
 const GlRenderer = zapui.GlRenderer;
 const TextSystem = zapui.TextSystem;
@@ -22,10 +23,6 @@ const h_flex = zapui.elements.div.h_flex;
 const reset = zapui.elements.div.reset;
 const px = zapui.elements.div.px;
 
-const glfw = @cImport({
-    @cInclude("GLFW/glfw3.h");
-});
-
 // ============================================================================
 // Colors - matching GPUI example
 // ============================================================================
@@ -34,7 +31,7 @@ const bg_color = zapui.rgb(0x505050);
 const border_color = zapui.rgb(0x0000ff);
 const text_color = zapui.rgb(0xffffff);
 const red = zapui.rgb(0xff0000);
-const green = zapui.rgb(0x00ff00);
+const green = zapui.hsla(0.333, 1.0, 0.25, 1.0);  // GPUI's green()
 const blue = zapui.rgb(0x0000ff);
 const yellow = zapui.rgb(0xffff00);
 const black = zapui.rgb(0x000000);
@@ -49,47 +46,12 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
 
     const rem: Pixels = 16.0;
 
-    // Build the view matching GPUI's hello_world.rs:
-    //
-    // div()
-    //     .flex()
-    //     .flex_col()
-    //     .gap_3()
-    //     .bg(rgb(0x505050))
-    //     .size(px(500.0))
-    //     .justify_center()
-    //     .items_center()
-    //     .shadow_lg()
-    //     .border_1()
-    //     .border_color(rgb(0x0000ff))
-    //     .text_xl()
-    //     .text_color(rgb(0xffffff))
-    //     .child(format!("Hello, {}!", &self.text))
-    //     .child(color_boxes_row)
-
     // Format the greeting text
     var greeting_buf: [64]u8 = undefined;
     const greeting = std.fmt.bufPrint(&greeting_buf, "Hello, {s}!", .{name}) catch "Hello, World!";
 
-    // Text label - in GPUI this would be .child("Hello, World!")
-    // We still need a div wrapper since Zig can't have heterogeneous children
-    const text_label = div().child_text(greeting);
-
-    // Color boxes row - matches GPUI exactly:
-    // div().flex().gap_2().child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))...
-    const color_boxes = h_flex()
-        .gap_2()
-        .child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(green).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(blue).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(yellow).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(black).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(white).border_1().border_dashed().rounded_md().border_color(black));
-
-    // Main container - matches GPUI exactly:
-    // div().flex().flex_col().gap_3().bg(...).size(px(500)).justify_center().items_center()
-    //     .shadow_lg().border_1().border_color(...).text_xl().text_color(...)
-    //     .child("Hello, World!").child(color_boxes)
+    // Build the view matching GPUI's hello_world.rs - fully inlined!
+    // The only difference from Rust: text needs div().child_text() wrapper
     const root = div()
         .flex()
         .flex_col()
@@ -103,18 +65,18 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
         .border_color(border_color)
         .text_xl()
         .text_color(text_color)
-        .child(text_label)
-        .child(color_boxes);
+        .child(div().child_text(greeting))
+        .child(h_flex()
+            .gap_2()
+            .child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))
+            .child(div().size_8().bg(green).border_1().border_dashed().rounded_md().border_color(white))
+            .child(div().size_8().bg(blue).border_1().border_dashed().rounded_md().border_color(white))
+            .child(div().size_8().bg(yellow).border_1().border_dashed().rounded_md().border_color(white))
+            .child(div().size_8().bg(black).border_1().border_dashed().rounded_md().border_color(white))
+            .child(div().size_8().bg(white).border_1().border_dashed().rounded_md().border_color(black)));
 
     try root.buildWithTextSystem(tree, rem, text_system);
     tree.computeLayoutWithSize(root.node_id.?, 500, 500);
-    
-    // Debug: print layout info
-    if (false) { // Set to true to debug
-        std.debug.print("Root layout:\n", .{});
-        tree.printTree(root.node_id.?);
-    }
-    
     root.paint(scene, text_system, 0, 0, tree, null, null);
 }
 
@@ -126,34 +88,29 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
 
 pub fn main() !void {
     // Initialize GLFW
-    if (glfw.glfwInit() == 0) {
+    zglfw.init() catch {
         std.debug.print("Failed to initialize GLFW\n", .{});
         return;
-    }
-    defer glfw.glfwTerminate();
+    };
+    defer zglfw.terminate();
 
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_OPENGL_PROFILE, glfw.GLFW_OPENGL_CORE_PROFILE);
+    // Set OpenGL 3.3 Core Profile
+    zglfw.windowHint(.context_version_major, 3);
+    zglfw.windowHint(.context_version_minor, 3);
+    zglfw.windowHint(.opengl_profile, .opengl_core_profile);
 
     // Create a 500x500 window to match GPUI example
-    const window = glfw.glfwCreateWindow(500, 500, "Hello World - ZapUI", null, null) orelse {
+    const window = zglfw.Window.create(500, 500, "Hello World - ZapUI", null, null) catch {
         std.debug.print("Failed to create window\n", .{});
         return;
     };
-    defer glfw.glfwDestroyWindow(window);
+    defer window.destroy();
 
-    glfw.glfwMakeContextCurrent(window);
-    glfw.glfwSwapInterval(1);
+    zglfw.makeContextCurrent(window);
+    zglfw.swapInterval(1);
 
     // Load OpenGL functions
-    const getProcWrapper = struct {
-        fn get(name: [*:0]const u8) ?*anyopaque {
-            const ptr = glfw.glfwGetProcAddress(name);
-            return @ptrCast(@constCast(ptr));
-        }
-    }.get;
-    zapui.renderer.gl.loadGlFunctions(getProcWrapper) catch {
+    zapui.renderer.gl.loadGlFunctions(zglfw.getProcAddress) catch {
         std.debug.print("Failed to load OpenGL functions\n", .{});
         return;
     };
@@ -189,20 +146,18 @@ pub fn main() !void {
     std.debug.print("Press ESC to exit\n", .{});
 
     // Main loop
-    while (glfw.glfwWindowShouldClose(window) == 0) {
-        glfw.glfwPollEvents();
+    while (!window.shouldClose()) {
+        zglfw.pollEvents();
 
         // Check for ESC
-        if (glfw.glfwGetKey(window, glfw.GLFW_KEY_ESCAPE) == glfw.GLFW_PRESS) {
+        if (window.getKey(.escape) == .press) {
             break;
         }
 
         // Get window size
-        var width: c_int = 0;
-        var height: c_int = 0;
-        glfw.glfwGetFramebufferSize(window, &width, &height);
+        const fb_size = window.getFramebufferSize();
 
-        renderer.setViewport(@floatFromInt(width), @floatFromInt(height), 1.0);
+        renderer.setViewport(@floatFromInt(fb_size[0]), @floatFromInt(fb_size[1]), 1.0);
         renderer.clear(zapui.rgb(0x1a1a1a)); // Dark background around the box
 
         var scene = Scene.init(allocator);
@@ -218,6 +173,6 @@ pub fn main() !void {
 
         renderer.drawScene(&scene) catch {};
 
-        glfw.glfwSwapBuffers(window);
+        window.swapBuffers();
     }
 }

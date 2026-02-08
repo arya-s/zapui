@@ -54,37 +54,64 @@ void main() {
     float aa = fwidth(dist);
     float outer_alpha = 1.0 - smoothstep(-aa, aa, dist);
     
-    // Border handling
+    // Border handling - pick nearest border width like GPUI
     vec4 bw = v_border_widths;  // top, right, bottom, left
-    float border_top = bw.x;
-    float border_right = bw.y;
-    float border_bottom = bw.z;
-    float border_left = bw.w;
-    
-    // Calculate inner box for border
-    vec2 inner_half_size = half_size - vec2(
-        (border_left + border_right) * 0.5,
-        (border_top + border_bottom) * 0.5
-    );
-    vec2 inner_offset = vec2(
-        (border_left - border_right) * 0.5,
-        (border_top - border_bottom) * 0.5
+    vec2 border = vec2(
+        center_pos.x < 0.0 ? bw.w : bw.y,  // left or right
+        center_pos.y < 0.0 ? bw.x : bw.z   // top or bottom
     );
     
-    // Adjust inner radii
-    float avg_border = (border_top + border_right + border_bottom + border_left) * 0.25;
-    vec4 inner_radii = max(radii - vec4(avg_border), vec4(0.0));
+    // Pick the corner radius for this quadrant
+    float corner_radius;
+    if (center_pos.x < 0.0) {
+        corner_radius = (center_pos.y < 0.0) ? radii.x : radii.w;  // TL or BL
+    } else {
+        corner_radius = (center_pos.y < 0.0) ? radii.y : radii.z;  // TR or BR
+    }
     
-    // SDF for inner edge (border inside)
-    float inner_dist = roundedBoxSDF(center_pos - inner_offset, max(inner_half_size, vec2(0.0)), inner_radii);
-    float inner_alpha = 1.0 - smoothstep(-aa, aa, inner_dist);
+    // Vector from corner of quad bounds to point (mirrored to bottom-right quadrant)
+    vec2 corner_to_point = abs(center_pos) - half_size;
     
-    // Determine if we're in border or fill area
-    float border_factor = outer_alpha * (1.0 - inner_alpha);
-    float fill_factor = outer_alpha * inner_alpha;
+    // Vector from point to center of rounded corner's circle
+    vec2 corner_center_to_point = corner_to_point + corner_radius;
+    
+    // Inner edge calculation like GPUI
+    float antialias_threshold = 0.5;
+    vec2 reduced_border = vec2(
+        border.x == 0.0 ? -antialias_threshold : border.x,
+        border.y == 0.0 ? -antialias_threshold : border.y
+    );
+    
+    vec2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+    
+    // Calculate inner SDF like GPUI
+    float inner_dist;
+    if (corner_center_to_point.x <= 0.0 || corner_center_to_point.y <= 0.0) {
+        // Straight border region
+        inner_dist = -max(straight_border_inner_corner_to_point.x, straight_border_inner_corner_to_point.y);
+    } else if (straight_border_inner_corner_to_point.x > 0.0 || straight_border_inner_corner_to_point.y > 0.0) {
+        // Beyond inner straight border
+        inner_dist = -1.0;
+    } else if (reduced_border.x == reduced_border.y) {
+        // Circular inner edge
+        inner_dist = -(dist + reduced_border.x);
+    } else {
+        // Elliptical inner edge (simplified)
+        vec2 ellipse_radii = max(vec2(0.0), vec2(corner_radius) - reduced_border);
+        vec2 p = corner_center_to_point / max(ellipse_radii, vec2(0.001));
+        inner_dist = (length(p) - 1.0) * min(ellipse_radii.x, ellipse_radii.y);
+    }
+    
+    // border_sdf: negative when inside the border region
+    float border_sdf = max(inner_dist, dist);
+    
+    // Colors
+    vec4 bg_color = v_background_color;
+    vec4 bd_color = v_border_color;
     
     // Handle dashed border style (matching GPUI's approach)
-    if (v_border_style > 0.5 && border_factor > 0.0) {
+    // Only process if we're in the border region (border_sdf < threshold)
+    if (v_border_style > 0.5 && border_sdf < antialias_threshold) {
         // GPUI uses: (2 * border_width) dash, (1 * border_width) gap
         float avg_border_width = (bw.x + bw.y + bw.z + bw.w) * 0.25;
         avg_border_width = max(avg_border_width, 1.0);
@@ -127,21 +154,37 @@ void main() {
             perimeter_pos = (angle + 3.14159) / (2.0 * 3.14159) * perimeter;
         }
         
-        // Apply dash pattern with slight anti-aliasing
+        // Apply dash pattern
         float pattern_phase = mod(perimeter_pos, pattern_length);
-        // Use step for crisp dashes (GPUI-style)
-        float dash_alpha = step(pattern_phase, dash_length);
+        float dash_alpha_val = step(pattern_phase, dash_length);
         
-        border_factor *= dash_alpha;
+        // Modulate border alpha for dashing (like GPUI)
+        bd_color.a *= dash_alpha_val;
     }
     
-    // Mix colors
-    vec4 bg_color = v_background_color;
-    vec4 bd_color = v_border_color;
+    // Start with background color
+    vec4 final_color = bg_color;
     
-    vec4 final_color = bg_color * fill_factor + bd_color * border_factor;
-    final_color.a = outer_alpha * max(bg_color.a * fill_factor + bd_color.a * border_factor, 
-                                       step(0.001, fill_factor) * bg_color.a + step(0.001, border_factor) * bd_color.a);
+    // Only blend border if we're in the border region
+    if (border_sdf < antialias_threshold) {
+        // GPUI-style blending using "over" operator:
+        // over(below, above) where below=background, above=border
+        float blended_alpha = bd_color.a + bg_color.a * (1.0 - bd_color.a);
+        vec3 blended_rgb = (blended_alpha > 0.001) 
+            ? (bd_color.rgb * bd_color.a + bg_color.rgb * bg_color.a * (1.0 - bd_color.a)) / blended_alpha
+            : bg_color.rgb;
+        vec4 blended = vec4(blended_rgb, blended_alpha);
+        
+        // GPUI: mix(background, blended, saturate(threshold - inner_sdf))
+        // inner_dist is negative in border, positive in fill (like GPUI's inner_sdf)
+        float border_blend = clamp(antialias_threshold - inner_dist, 0.0, 1.0);
+        final_color = mix(bg_color, blended, border_blend);
+    }
+    
+    // Apply outer edge antialiasing using SDF (like GPUI)
+    // GPUI: blend_color(color, saturate(threshold - outer_sdf))
+    float outer_blend = clamp(antialias_threshold - dist, 0.0, 1.0);
+    final_color.a *= outer_blend;
     
     // Content mask clipping
     if (v_content_mask.z > 0.0 && v_content_mask.w > 0.0) {

@@ -1,4 +1,4 @@
-.PHONY: help build test run run-release clean taffy-demo taffy-visual playground
+.PHONY: help build test run run-release clean taffy-demo taffy-visual playground hello-world windows windows-release
 
 # Default target
 all: help
@@ -35,6 +35,32 @@ taffy-demo:
 taffy-visual:
 	zig build taffy-visual
 
+# Run Hello World example (GPUI port)
+hello-world:
+	zig build hello-world
+
+# Build all examples for Windows (cross-compile from Linux/WSL)
+windows:
+	zig build hello-world -Dtarget=x86_64-windows
+	zig build run -Dtarget=x86_64-windows
+	zig build zaffy-visual -Dtarget=x86_64-windows
+	@echo ""
+	@echo "Windows executables built in zig-out/bin/"
+	@echo "  - hello_world.exe"
+	@echo "  - playground.exe"
+	@echo "  - zaffy_visual.exe"
+
+# Build all examples for Windows (release mode)
+windows-release:
+	zig build hello-world -Dtarget=x86_64-windows -Doptimize=ReleaseFast
+	zig build run -Dtarget=x86_64-windows -Doptimize=ReleaseFast
+	zig build zaffy-visual -Dtarget=x86_64-windows -Doptimize=ReleaseFast
+	@echo ""
+	@echo "Windows release executables built in zig-out/bin/"
+	@echo "  - hello_world.exe"
+	@echo "  - playground.exe"
+	@echo "  - zaffy_visual.exe"
+
 # Clean build artifacts
 clean:
 	rm -rf zig-out .zig-cache
@@ -50,15 +76,17 @@ watch-run:
 # Show help
 help:
 	@echo "zapui Makefile targets:"
-	@echo "  make build        - Build the library"
-	@echo "  make test         - Run unit tests"
-	@echo "  make run          - Run the Div API playground"
-	@echo "  make playground   - Alias for 'make run'"
-	@echo "  make run-release  - Run playground (release build)"
-	@echo "  make run-args ARGS='...' - Run playground with arguments"
-	@echo "  make taffy-demo   - Run Taffy console demo"
-	@echo "  make taffy-visual - Run Taffy visual demo"
-	@echo "  make clean        - Remove build artifacts"
-	@echo "  make watch-test   - Watch files and run tests on change"
-	@echo "  make watch-run    - Watch files and run playground on change"
-	@echo "  make help         - Show this help"
+	@echo "  make build          - Build the library"
+	@echo "  make test           - Run unit tests"
+	@echo "  make run            - Run the Div API playground"
+	@echo "  make playground     - Alias for 'make run'"
+	@echo "  make run-release    - Run playground (release build)"
+	@echo "  make hello-world    - Run Hello World example (GPUI port)"
+	@echo "  make taffy-demo     - Run Taffy console demo"
+	@echo "  make taffy-visual   - Run Taffy visual demo"
+	@echo "  make windows        - Cross-compile all examples for Windows"
+	@echo "  make windows-release- Cross-compile for Windows (release)"
+	@echo "  make clean          - Remove build artifacts"
+	@echo "  make watch-test     - Watch files and run tests on change"
+	@echo "  make watch-run      - Watch files and run playground on change"
+	@echo "  make help           - Show this help"

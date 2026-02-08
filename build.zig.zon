@@ -14,5 +14,13 @@
     .dependencies = .{
         .freetype = .{ .path = "pkg/freetype" },
         .harfbuzz = .{ .path = "pkg/harfbuzz" },
+        .zglfw = .{
+            .url = "https://github.com/zig-gamedev/zglfw/archive/refs/heads/main.tar.gz",
+            .hash = "zglfw-0.10.0-dev-zgVDNES4IQAAXAcsFiHfmadlpDCHhF2cUqWxBGIViyU6",
+        },
+        .zopengl = .{
+            .url = "https://github.com/zig-gamedev/zopengl/archive/refs/heads/main.tar.gz",
+            .hash = "zopengl-0.6.0-dev-5-tnz7OjDgCMUH3dLn6zVzohxKV-FhrXXh13-HZSl2Ul",
+        },
     },
 }

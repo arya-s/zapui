@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const zapui = @import("zapui");
+const zglfw = @import("zglfw");
 
 const GlRenderer = zapui.GlRenderer;
 const TextSystem = zapui.TextSystem;
@@ -19,8 +20,6 @@ const v_flex = zapui.elements.div.v_flex;
 const h_flex = zapui.elements.div.h_flex;
 const reset = zapui.elements.div.reset;
 const px = zapui.elements.div.px;
-
-const glfw = @cImport({ @cInclude("GLFW/glfw3.h"); });
 
 // ============================================================================
 // Colors - Modern dark theme
@@ -577,17 +576,14 @@ fn handleCharInput(codepoint: u21) void {
     }
 }
 
-fn handleKeyInput(key: c_int) void {
-    const GLFW_KEY_BACKSPACE = 259;
-    const GLFW_KEY_ESCAPE = 256;
-    
-    if (key == GLFW_KEY_ESCAPE) {
+fn handleKeyInput(key: zglfw.Key) void {
+    if (key == .escape) {
         g_focused_input = null;
         return;
     }
     
     if (g_focused_input) |id| {
-        if (key == GLFW_KEY_BACKSPACE) {
+        if (key == .backspace) {
             if (id == ID_INPUT1 and g_input1_len > 0) {
                 g_input1_len -= 1;
             } else if (id == ID_INPUT2 and g_input2_len > 0) {
@@ -615,56 +611,51 @@ fn handleSliderDrag() void {
 // ============================================================================
 
 pub fn main() !void {
-    if (glfw.glfwInit() == 0) return;
-    defer glfw.glfwTerminate();
+    zglfw.init() catch return;
+    defer zglfw.terminate();
 
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfw.glfwWindowHint(glfw.GLFW_OPENGL_PROFILE, glfw.GLFW_OPENGL_CORE_PROFILE);
+    zglfw.windowHint(.context_version_major, 3);
+    zglfw.windowHint(.context_version_minor, 3);
+    zglfw.windowHint(.opengl_profile, .opengl_core_profile);
 
-    const win = glfw.glfwCreateWindow(900, 650, "ZapUI Playground", null, null) orelse return;
-    defer glfw.glfwDestroyWindow(win);
-    glfw.glfwMakeContextCurrent(win);
-    glfw.glfwSwapInterval(1);
+    const win = zglfw.Window.create(900, 650, "ZapUI Playground", null, null) catch return;
+    defer win.destroy();
+    zglfw.makeContextCurrent(win);
+    zglfw.swapInterval(1);
 
-    _ = glfw.glfwSetCursorPosCallback(win, struct {
-        fn cb(_: ?*glfw.GLFWwindow, x: f64, y: f64) callconv(.c) void {
+    // Set callbacks
+    _ = win.setCursorPosCallback(struct {
+        fn cb(_: *zglfw.Window, x: f64, y: f64) callconv(.c) void {
             g_mouse_pos = .{ .x = @floatCast(x), .y = @floatCast(y) };
             handleSliderDrag();
         }
     }.cb);
 
-    _ = glfw.glfwSetMouseButtonCallback(win, struct {
-        fn cb(_: ?*glfw.GLFWwindow, button: c_int, action: c_int, _: c_int) callconv(.c) void {
-            if (button == glfw.GLFW_MOUSE_BUTTON_LEFT) {
-                if (action == glfw.GLFW_PRESS) { g_mouse_down = true; handleClick(); }
-                else if (action == glfw.GLFW_RELEASE) { g_mouse_down = false; }
+    _ = win.setMouseButtonCallback(struct {
+        fn cb(_: *zglfw.Window, button: zglfw.MouseButton, action: zglfw.Action, _: zglfw.Mods) callconv(.c) void {
+            if (button == .left) {
+                if (action == .press) { g_mouse_down = true; handleClick(); }
+                else if (action == .release) { g_mouse_down = false; }
             }
         }
     }.cb);
 
-    _ = glfw.glfwSetCharCallback(win, struct {
-        fn cb(_: ?*glfw.GLFWwindow, codepoint: c_uint) callconv(.c) void {
+    _ = win.setCharCallback(struct {
+        fn cb(_: *zglfw.Window, codepoint: u32) callconv(.c) void {
             handleCharInput(@intCast(codepoint));
         }
     }.cb);
 
-    _ = glfw.glfwSetKeyCallback(win, struct {
-        fn cb(_: ?*glfw.GLFWwindow, key: c_int, _: c_int, action: c_int, _: c_int) callconv(.c) void {
-            if (action == glfw.GLFW_PRESS or action == glfw.GLFW_REPEAT) {
+    _ = win.setKeyCallback(struct {
+        fn cb(_: *zglfw.Window, key: zglfw.Key, _: i32, action: zglfw.Action, _: zglfw.Mods) callconv(.c) void {
+            if (action == .press or action == .repeat) {
                 handleKeyInput(key);
             }
         }
     }.cb);
 
     // Load OpenGL functions
-    const getProcWrapper = struct {
-        fn get(name: [*:0]const u8) ?*anyopaque {
-            const ptr = glfw.glfwGetProcAddress(name);
-            return @ptrCast(@constCast(ptr));
-        }
-    }.get;
-    zapui.renderer.gl.loadGlFunctions(getProcWrapper) catch {
+    zapui.renderer.gl.loadGlFunctions(zglfw.getProcAddress) catch {
         std.debug.print("Failed to load OpenGL functions\n", .{});
         return;
     };
@@ -688,17 +679,15 @@ pub fn main() !void {
     text_system.setAtlas(renderer.getGlyphAtlas());
     text_system.setColorAtlas(renderer.getColorAtlas());
 
-    while (glfw.glfwWindowShouldClose(win) == 0) {
-        glfw.glfwPollEvents();
+    while (!win.shouldClose()) {
+        zglfw.pollEvents();
         
         // Update cursor blink
         g_cursor_blink +%= 1;
 
-        var ww: c_int = 0;
-        var wh: c_int = 0;
-        glfw.glfwGetFramebufferSize(win, &ww, &wh);
-        const width: Pixels = @floatFromInt(ww);
-        const height: Pixels = @floatFromInt(wh);
+        const fb_size = win.getFramebufferSize();
+        const width: Pixels = @floatFromInt(fb_size[0]);
+        const height: Pixels = @floatFromInt(fb_size[1]);
 
         renderer.setViewport(width, height, 1.0);
         renderer.clear(C.bg_dark);
@@ -713,6 +702,6 @@ pub fn main() !void {
 
         renderer.drawScene(&scene) catch {};
 
-        glfw.glfwSwapBuffers(win);
+        win.swapBuffers();
     }
 }

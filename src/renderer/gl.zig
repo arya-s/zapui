@@ -138,70 +138,99 @@ pub var glGetError: *const fn () callconv(.c) GLenum = undefined;
 pub var glGetString: *const fn (GLenum) callconv(.c) ?[*:0]const GLubyte = undefined;
 pub var glGetIntegerv: *const fn (GLenum, [*]GLint) callconv(.c) void = undefined;
 
+/// GL Proc loader function type (compatible with zglfw)
+pub const GlProcLoader = *const fn ([*:0]const u8) callconv(.c) ?*const anyopaque;
+
+/// Legacy GL Proc loader function type (for old cImport-based code)
+pub const LegacyGlProcLoader = *const fn ([*:0]const u8) ?*anyopaque;
+
+var glProcLoader: ?GlProcLoader = null;
+
 /// Load a single GL function by name
-fn loadFunction(comptime name: [:0]const u8, getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !void {
-    const ptr = getProcAddress(name) orelse return error.GlFunctionNotFound;
-    @field(@This(), name) = @ptrCast(ptr);
+fn loadFunction(comptime name: [:0]const u8) !void {
+    const loader = glProcLoader orelse return error.GlLoaderNotSet;
+    const ptr = loader(name) orelse return error.GlFunctionNotFound;
+    @field(@This(), name) = @ptrCast(@constCast(ptr));
 }
 
-/// Load OpenGL 3.3 function pointers
+/// Load OpenGL 3.3 function pointers using zglfw-compatible loader
 /// This should be called after creating an OpenGL context
-pub fn loadGlFunctions(getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !void {
+pub fn loadGlFunctions(getProcAddress: GlProcLoader) !void {
+    glProcLoader = getProcAddress;
+    try loadAllFunctions();
+}
+
+/// Load OpenGL 3.3 function pointers using legacy loader (cImport-based)
+pub fn loadGlFunctionsLegacy(getProcAddress: LegacyGlProcLoader) !void {
+    // Wrap the legacy loader to match the zglfw signature
+    const wrapper = struct {
+        var legacy_loader: LegacyGlProcLoader = undefined;
+        fn load(name: [*:0]const u8) callconv(.c) ?*const anyopaque {
+            const ptr = legacy_loader(name);
+            return if (ptr) |p| @ptrCast(p) else null;
+        }
+    };
+    wrapper.legacy_loader = getProcAddress;
+    glProcLoader = wrapper.load;
+    try loadAllFunctions();
+}
+
+fn loadAllFunctions() !void {
     // GL 3.0+ functions
-    try loadFunction("glGenVertexArrays", getProcAddress);
-    try loadFunction("glDeleteVertexArrays", getProcAddress);
-    try loadFunction("glBindVertexArray", getProcAddress);
-    try loadFunction("glGenBuffers", getProcAddress);
-    try loadFunction("glDeleteBuffers", getProcAddress);
-    try loadFunction("glBindBuffer", getProcAddress);
-    try loadFunction("glBufferData", getProcAddress);
-    try loadFunction("glBufferSubData", getProcAddress);
-    try loadFunction("glVertexAttribPointer", getProcAddress);
-    try loadFunction("glVertexAttribDivisor", getProcAddress);
-    try loadFunction("glEnableVertexAttribArray", getProcAddress);
-    try loadFunction("glDisableVertexAttribArray", getProcAddress);
-    try loadFunction("glCreateShader", getProcAddress);
-    try loadFunction("glDeleteShader", getProcAddress);
-    try loadFunction("glShaderSource", getProcAddress);
-    try loadFunction("glCompileShader", getProcAddress);
-    try loadFunction("glGetShaderiv", getProcAddress);
-    try loadFunction("glGetShaderInfoLog", getProcAddress);
-    try loadFunction("glCreateProgram", getProcAddress);
-    try loadFunction("glDeleteProgram", getProcAddress);
-    try loadFunction("glAttachShader", getProcAddress);
-    try loadFunction("glLinkProgram", getProcAddress);
-    try loadFunction("glGetProgramiv", getProcAddress);
-    try loadFunction("glGetProgramInfoLog", getProcAddress);
-    try loadFunction("glUseProgram", getProcAddress);
-    try loadFunction("glGetUniformLocation", getProcAddress);
-    try loadFunction("glUniform1i", getProcAddress);
-    try loadFunction("glUniform1f", getProcAddress);
-    try loadFunction("glUniform2f", getProcAddress);
-    try loadFunction("glUniform3f", getProcAddress);
-    try loadFunction("glUniform4f", getProcAddress);
-    try loadFunction("glDrawArraysInstanced", getProcAddress);
-    try loadFunction("glActiveTexture", getProcAddress);
-    try loadFunction("glGenerateMipmap", getProcAddress);
+    try loadFunction("glGenVertexArrays");
+    try loadFunction("glDeleteVertexArrays");
+    try loadFunction("glBindVertexArray");
+    try loadFunction("glGenBuffers");
+    try loadFunction("glDeleteBuffers");
+    try loadFunction("glBindBuffer");
+    try loadFunction("glBufferData");
+    try loadFunction("glBufferSubData");
+    try loadFunction("glVertexAttribPointer");
+    try loadFunction("glVertexAttribDivisor");
+    try loadFunction("glEnableVertexAttribArray");
+    try loadFunction("glDisableVertexAttribArray");
+    try loadFunction("glCreateShader");
+    try loadFunction("glDeleteShader");
+    try loadFunction("glShaderSource");
+    try loadFunction("glCompileShader");
+    try loadFunction("glGetShaderiv");
+    try loadFunction("glGetShaderInfoLog");
+    try loadFunction("glCreateProgram");
+    try loadFunction("glDeleteProgram");
+    try loadFunction("glAttachShader");
+    try loadFunction("glLinkProgram");
+    try loadFunction("glGetProgramiv");
+    try loadFunction("glGetProgramInfoLog");
+    try loadFunction("glUseProgram");
+    try loadFunction("glGetUniformLocation");
+    try loadFunction("glUniform1i");
+    try loadFunction("glUniform1f");
+    try loadFunction("glUniform2f");
+    try loadFunction("glUniform3f");
+    try loadFunction("glUniform4f");
+    try loadFunction("glDrawArraysInstanced");
+    try loadFunction("glActiveTexture");
+    try loadFunction("glGenerateMipmap");
 
     // GL 1.x/2.x functions
-    try loadFunction("glEnable", getProcAddress);
-    try loadFunction("glDisable", getProcAddress);
-    try loadFunction("glBlendFunc", getProcAddress);
-    try loadFunction("glClear", getProcAddress);
-    try loadFunction("glClearColor", getProcAddress);
-    try loadFunction("glViewport", getProcAddress);
-    try loadFunction("glScissor", getProcAddress);
-    try loadFunction("glGenTextures", getProcAddress);
-    try loadFunction("glDeleteTextures", getProcAddress);
-    try loadFunction("glBindTexture", getProcAddress);
-    try loadFunction("glTexImage2D", getProcAddress);
-    try loadFunction("glTexSubImage2D", getProcAddress);
-    try loadFunction("glTexParameteri", getProcAddress);
-    try loadFunction("glGenerateMipmap", getProcAddress);
-    try loadFunction("glPixelStorei", getProcAddress);
-    try loadFunction("glGetError", getProcAddress);
-    try loadFunction("glGetString", getProcAddress);
-    try loadFunction("glGetIntegerv", getProcAddress);
+    try loadFunction("glEnable");
+    try loadFunction("glDisable");
+    try loadFunction("glBlendFunc");
+    try loadFunction("glClear");
+    try loadFunction("glClearColor");
+    try loadFunction("glViewport");
+    try loadFunction("glScissor");
+    try loadFunction("glGenTextures");
+    try loadFunction("glDeleteTextures");
+    try loadFunction("glBindTexture");
+    try loadFunction("glTexImage2D");
+    try loadFunction("glTexSubImage2D");
+    try loadFunction("glTexParameteri");
+    try loadFunction("glGenerateMipmap");
+    try loadFunction("glPixelStorei");
+    try loadFunction("glGetError");
+    try loadFunction("glGetString");
+    try loadFunction("glGetIntegerv");
 }
 
 /// Check for OpenGL errors

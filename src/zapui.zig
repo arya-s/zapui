@@ -213,8 +213,14 @@ pub const AtlasFormat = renderer.atlas.Format;
 pub const AtlasRegion = renderer.atlas.Region;
 
 /// Load OpenGL function pointers (call after creating GL context)
-pub fn loadGl(getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !void {
+/// Use this with zglfw.getProcAddress or similar loaders
+pub fn loadGl(getProcAddress: renderer.gl.GlProcLoader) !void {
     try renderer.gl.loadGlFunctions(getProcAddress);
+}
+
+/// Load OpenGL function pointers using legacy loader (for cImport-based code)
+pub fn loadGlLegacy(getProcAddress: renderer.gl.LegacyGlProcLoader) !void {
+    try renderer.gl.loadGlFunctionsLegacy(getProcAddress);
 }
 
 // ============================================================================
