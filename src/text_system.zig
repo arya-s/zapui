@@ -359,8 +359,8 @@ pub const TextSystem = struct {
         // Set pixel size
         font.face.setPixelSizes(0, @intFromFloat(size)) catch return null;
 
-        // Load glyph with rendering
-        font.face.loadGlyph(glyph_id, .{ .render = true }) catch return null;
+        // Load glyph with light hinting for sharper rendering
+        font.face.loadGlyph(glyph_id, .{ .render = true, .target = .light }) catch return null;
 
         const face_handle = font.face.handle;
         const glyph_slot = face_handle.*.glyph;
@@ -440,15 +440,18 @@ pub const TextSystem = struct {
         var run = try self.shapeText(text_str, font_id, size);
         defer self.freeShapedRun(&run);
 
-        // Render each glyph
+        // Render each glyph with pixel-aligned positions for crisp rendering
         var glyph_x = x;
         for (run.glyphs) |glyph| {
             if (self.rasterizeGlyph(font_id, glyph.glyph_id, size)) |cached| {
                 if (cached.pixel_bounds.size.width > 0 and cached.pixel_bounds.size.height > 0) {
+                    // Round positions to nearest pixel for crisp text
+                    const px_x = @round(glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x);
+                    const px_y = @round(y + glyph.y_offset + cached.pixel_bounds.origin.y);
                     try scene.insertMonoSprite(.{
                         .bounds = Bounds(Pixels).fromXYWH(
-                            glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x,
-                            y + glyph.y_offset + cached.pixel_bounds.origin.y,
+                            px_x,
+                            px_y,
                             cached.pixel_bounds.size.width,
                             cached.pixel_bounds.size.height,
                         ),
