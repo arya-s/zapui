@@ -1,4 +1,4 @@
-.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui compare capture
+.PHONY: help build test run run-release clean zaffy-demo zaffy-visual playground hello-world windows windows-release list-gpui port-gpui compare capture capture-gpui capture-both
 
 # Default target
 all: help
@@ -78,6 +78,15 @@ port-gpui:
 capture:
 	@./tools/capture_zapui.sh $(EXAMPLE)
 
+# Capture GPUI screenshot (usage: make capture-gpui EXAMPLE=hello_world)
+capture-gpui:
+	@./tools/capture_gpui.sh $(EXAMPLE)
+
+# Capture both ZapUI and GPUI screenshots (usage: make capture-both EXAMPLE=hello_world)
+capture-both:
+	@./tools/capture_zapui.sh $(EXAMPLE)
+	@./tools/capture_gpui.sh $(EXAMPLE)
+
 # Create comparison images from screenshots (usage: make compare EXAMPLE=hello_world)
 compare:
 	@./tools/create_comparison.sh $(EXAMPLE)
@@ -103,16 +112,17 @@ help:
 	@echo "GPUI Porting Tools:"
 	@echo "  make list-gpui      - List available GPUI examples"
 	@echo "  make port-gpui EXAMPLE=<name> - Generate Zig skeleton from GPUI example"
-	@echo "  make capture EXAMPLE=<name>   - Capture ZapUI screenshot (WSL)"
+	@echo "  make capture EXAMPLE=<name>   - Capture ZapUI screenshot"
+	@echo "  make capture-gpui EXAMPLE=<name> - Capture GPUI screenshot"
+	@echo "  make capture-both EXAMPLE=<name> - Capture both screenshots"
 	@echo "  make compare EXAMPLE=<name>   - Create comparison images"
 	@echo ""
 	@echo "Screenshot Workflow (from WSL):"
 	@echo "  1. make port-gpui EXAMPLE=<name>  - Generate skeleton"
 	@echo "  2. Edit examples/gpui_ports/<name>/<name>.zig"
 	@echo "  3. make windows                    - Build for Windows"
-	@echo "  4. make capture EXAMPLE=<name>    - Capture ZapUI screenshot"
-	@echo "  5. (manually capture GPUI screenshot as gpui.png)"
-	@echo "  6. make compare EXAMPLE=<name>    - Generate comparison images"
+	@echo "  4. make capture-both EXAMPLE=<name> - Capture both screenshots"
+	@echo "  5. make compare EXAMPLE=<name>    - Generate comparison images"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean          - Remove build artifacts"
