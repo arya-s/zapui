@@ -73,7 +73,30 @@ pub fn main() !void {
         const boxes_x = container_x + (container_size - total_width) / 2;
         const boxes_y = container_y + container_size / 2 + 20;
         
-        var quads: [7]QuadInstance = undefined;
+        // "Hello, World!" text placeholder - draw letter rectangles
+        // In a full implementation, these would be glyph sprites from the atlas
+        const text = "Hello, World!";
+        const char_width: f32 = 12;
+        const char_height: f32 = 20;
+        const text_width = @as(f32, @floatFromInt(text.len)) * char_width;
+        const text_x = container_x + (container_size - text_width) / 2;
+        const text_y = container_y + container_size / 2 - 40;
+        
+        var quads: [7 + text.len]QuadInstance = undefined;
+        
+        // Add text character placeholders (white rectangles for now)
+        for (0..text.len) |i| {
+            const fi: f32 = @floatFromInt(i);
+            quads[7 + i] = .{
+                .bounds = .{ text_x + fi * char_width, text_y, char_width - 2, char_height },
+                .background_color = .{ 1.0, 1.0, 1.0, if (text[i] == ' ') 0.0 else 0.8 },
+                .border_color = .{ 0, 0, 0, 0 },
+                .border_widths = .{ 0, 0, 0, 0 },
+                .corner_radii = .{ 2, 2, 2, 2 },
+                .content_mask = .{ 0, 0, 0, 0 },
+                .border_style = .{ 0, 0, 0, 0 },
+            };
+        }
         
         // Main container
         quads[0] = .{

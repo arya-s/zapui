@@ -35,10 +35,25 @@ pub const QuadInstance = extern struct {
     border_style: [4]f32,     // x = style (0 = solid, 1 = dashed)
 };
 
-// Global params constant buffer
+// Sprite instance data (matches HLSL struct)
+pub const SpriteInstance = extern struct {
+    bounds: [4]f32,       // x, y, width, height (screen pixels)
+    uv_bounds: [4]f32,    // x, y, width, height (0-1 in texture)
+    color: [4]f32,        // RGBA tint
+    content_mask: [4]f32, // x, y, width, height (0,0,0,0 = no mask)
+};
+
+// Global params constant buffer for quads
 const GlobalParams = extern struct {
     viewport_size: [2]f32,
     _padding: [2]f32,
+};
+
+// Global params constant buffer for sprites
+const SpriteGlobalParams = extern struct {
+    viewport_size: [2]f32,
+    is_mono: i32,
+    _padding: f32,
 };
 
 pub const D3D11Renderer = struct {
@@ -62,6 +77,14 @@ pub const D3D11Renderer = struct {
     // Blend state
     blend_state: ?*d3d11.ID3D11BlendState,
     rasterizer_state: ?*d3d11.ID3D11RasterizerState,
+    
+    // Sprite shader resources
+    sprite_vertex_shader: ?*d3d11.ID3D11VertexShader,
+    sprite_pixel_shader: ?*d3d11.ID3D11PixelShader,
+    sprite_instance_buffer: ?*d3d11.ID3D11Buffer,
+    sprite_instance_srv: ?*d3d11.ID3D11ShaderResourceView,
+    sprite_constant_buffer: ?*d3d11.ID3D11Buffer,
+    sprite_sampler: ?*d3d11.ID3D11SamplerState,
 
     width: u32,
     height: u32,
@@ -132,6 +155,12 @@ pub const D3D11Renderer = struct {
             .instance_srv = null,
             .blend_state = null,
             .rasterizer_state = null,
+            .sprite_vertex_shader = null,
+            .sprite_pixel_shader = null,
+            .sprite_instance_buffer = null,
+            .sprite_instance_srv = null,
+            .sprite_constant_buffer = null,
+            .sprite_sampler = null,
             .width = width,
             .height = height,
             .max_instances = 4096,
@@ -283,6 +312,99 @@ pub const D3D11Renderer = struct {
         );
         if (layout_hr != S_OK) return error.CreateInputLayoutFailed;
         self.input_layout = layout;
+        
+        // Create sprite shaders
+        try self.createSpriteShaders();
+    }
+    
+    fn createSpriteShaders(self: *D3D11Renderer) !void {
+        const sprite_source = @embedFile("../shaders/hlsl/sprite.hlsl");
+        
+        // Compile vertex shader
+        var vs_blob: *ID3DBlob = undefined;
+        var vs_errors: ?*ID3DBlob = null;
+        
+        const vs_hr = fxc.D3DCompile(
+            sprite_source.ptr,
+            sprite_source.len,
+            null,
+            null,
+            null,
+            "VSMain",
+            "vs_5_0",
+            0,
+            0,
+            @ptrCast(&vs_blob),
+            @ptrCast(&vs_errors),
+        );
+        
+        if (vs_hr != S_OK) {
+            if (vs_errors) |errs| {
+                const msg: [*:0]const u8 = @ptrCast(errs.vtable.GetBufferPointer(errs));
+                std.debug.print("Sprite VS compile error: {s}\n", .{msg});
+                release(ID3DBlob, errs);
+            }
+            return error.ShaderCompileFailed;
+        }
+        defer release(ID3DBlob, vs_blob);
+        
+        // Compile pixel shader
+        var ps_blob: *ID3DBlob = undefined;
+        var ps_errors: ?*ID3DBlob = null;
+        
+        const ps_hr = fxc.D3DCompile(
+            sprite_source.ptr,
+            sprite_source.len,
+            null,
+            null,
+            null,
+            "PSMain",
+            "ps_5_0",
+            0,
+            0,
+            @ptrCast(&ps_blob),
+            @ptrCast(&ps_errors),
+        );
+        
+        if (ps_hr != S_OK) {
+            if (ps_errors) |errs| {
+                const msg: [*:0]const u8 = @ptrCast(errs.vtable.GetBufferPointer(errs));
+                std.debug.print("Sprite PS compile error: {s}\n", .{msg});
+                release(ID3DBlob, errs);
+            }
+            return error.ShaderCompileFailed;
+        }
+        defer release(ID3DBlob, ps_blob);
+        
+        // Create vertex shader
+        const vs_ptr: [*]const u8 = @ptrCast(vs_blob.vtable.GetBufferPointer(vs_blob));
+        const vs_size = vs_blob.vtable.GetBufferSize(vs_blob);
+        
+        var vs: *d3d11.ID3D11VertexShader = undefined;
+        const vs_create_hr = self.device.vtable.CreateVertexShader(
+            self.device,
+            vs_ptr,
+            vs_size,
+            null,
+            @ptrCast(&vs),
+        );
+        if (vs_create_hr != S_OK) return error.CreateVertexShaderFailed;
+        self.sprite_vertex_shader = vs;
+        
+        // Create pixel shader
+        const ps_ptr: [*]const u8 = @ptrCast(ps_blob.vtable.GetBufferPointer(ps_blob));
+        const ps_size = ps_blob.vtable.GetBufferSize(ps_blob);
+        
+        var ps: *d3d11.ID3D11PixelShader = undefined;
+        const ps_create_hr = self.device.vtable.CreatePixelShader(
+            self.device,
+            ps_ptr,
+            ps_size,
+            null,
+            @ptrCast(&ps),
+        );
+        if (ps_create_hr != S_OK) return error.CreatePixelShaderFailed;
+        self.sprite_pixel_shader = ps;
     }
 
     fn createBuffers(self: *D3D11Renderer) !void {
@@ -381,6 +503,15 @@ pub const D3D11Renderer = struct {
     }
 
     pub fn deinit(self: *D3D11Renderer) void {
+        // Sprite resources
+        if (self.sprite_sampler) |s| release(d3d11.ID3D11SamplerState, s);
+        if (self.sprite_constant_buffer) |b| release(d3d11.ID3D11Buffer, b);
+        if (self.sprite_instance_srv) |s| release(d3d11.ID3D11ShaderResourceView, s);
+        if (self.sprite_instance_buffer) |b| release(d3d11.ID3D11Buffer, b);
+        if (self.sprite_pixel_shader) |s| release(d3d11.ID3D11PixelShader, s);
+        if (self.sprite_vertex_shader) |s| release(d3d11.ID3D11VertexShader, s);
+        
+        // Quad resources
         if (self.rasterizer_state) |s| release(d3d11.ID3D11RasterizerState, s);
         if (self.blend_state) |s| release(d3d11.ID3D11BlendState, s);
         if (self.constant_buffer) |b| release(d3d11.ID3D11Buffer, b);
