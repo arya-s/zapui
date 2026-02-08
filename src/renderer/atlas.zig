@@ -346,9 +346,15 @@ pub const GlAtlas = struct {
         gl.glBindTexture(gl.GL_TEXTURE_2D, texture);
 
         // Set texture parameters
-        // Use NEAREST filtering for crisp text rendering
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST);
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST);
+        // Use NEAREST for grayscale (crisp text), LINEAR_MIPMAP_LINEAR for color (smooth emoji scaling)
+        if (format == .grayscale) {
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST);
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST);
+        } else {
+            // Use trilinear filtering for smooth downscaling
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR_MIPMAP_LINEAR);
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR);
+        }
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE);
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE);
 
@@ -432,6 +438,11 @@ pub const GlAtlas = struct {
             );
         }
 
+        // Generate mipmaps for color textures (for smooth downscaling)
+        if (self.atlas.format != .grayscale) {
+            gl.glGenerateMipmap(gl.GL_TEXTURE_2D);
+        }
+        
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0);
         self.last_synced = current;
     }

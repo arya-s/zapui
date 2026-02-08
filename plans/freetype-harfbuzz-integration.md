@@ -1,5 +1,19 @@
 # Plan: Integrate FreeType + HarfBuzz from phantty into zapui
 
+## Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 0: Build System Setup | ✅ Done | Copied pkg/freetype, pkg/harfbuzz, pkg/zlib |
+| Phase 1: Skyline Atlas | ✅ Done | Added GlAtlas wrapper with lazy GPU sync |
+| Phase 2: FreeType Backend | ✅ Done | Replaced stb_truetype, deleted src/vendor/ |
+| Phase 3: HarfBuzz Shaping | ✅ Done | Fixed kerning via hb_ft_font_changed() |
+| Phase 4: Color Emoji | ✅ Done | libpng enabled, mipmaps for smooth scaling |
+| Phase 5: Div Text Measurement | ✅ Done | Uses measureText() and getFontMetrics() |
+| Phase 6: Cleanup | 🔲 TODO | Remove remaining TODOs |
+
+---
+
 ## Context
 
 zapui currently uses stb_truetype for font rendering — simple but limited (no complex text shaping, no color emoji, no font fallback). phantty already has a mature FreeType + HarfBuzz setup with Zig wrappers in `pkg/freetype/` and `pkg/harfbuzz/`. Since the goal is to eventually use zapui as phantty's UI framework, the font systems should converge. This plan documents how to replace stb_truetype with phantty's FreeType + HarfBuzz, reusing as much existing code as possible.

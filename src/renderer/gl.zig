@@ -56,6 +56,10 @@ pub const GL_TEXTURE_WRAP_S: GLenum = 0x2802;
 pub const GL_TEXTURE_WRAP_T: GLenum = 0x2803;
 pub const GL_LINEAR: GLint = 0x2601;
 pub const GL_NEAREST: GLint = 0x2600;
+pub const GL_NEAREST_MIPMAP_NEAREST: GLint = 0x2700;
+pub const GL_LINEAR_MIPMAP_NEAREST: GLint = 0x2701;
+pub const GL_NEAREST_MIPMAP_LINEAR: GLint = 0x2702;
+pub const GL_LINEAR_MIPMAP_LINEAR: GLint = 0x2703;
 pub const GL_CLAMP_TO_EDGE: GLint = 0x812F;
 
 // Pixel formats
@@ -193,6 +197,7 @@ pub fn loadGlFunctions(getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !v
     try loadFunction("glTexImage2D", getProcAddress);
     try loadFunction("glTexSubImage2D", getProcAddress);
     try loadFunction("glTexParameteri", getProcAddress);
+    try loadFunction("glGenerateMipmap", getProcAddress);
     try loadFunction("glPixelStorei", getProcAddress);
     try loadFunction("glGetError", getProcAddress);
     try loadFunction("glGetString", getProcAddress);

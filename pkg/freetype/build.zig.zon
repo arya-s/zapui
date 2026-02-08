@@ -11,6 +11,7 @@
             .lazy = true,
         },
 
+        .libpng = .{ .path = "../libpng" },
         .zlib = .{ .path = "../zlib" },
     },
 }

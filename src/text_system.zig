@@ -119,6 +119,8 @@ const CachedGlyph = struct {
     atlas_bounds: Bounds(f32), // UV coordinates
     pixel_bounds: Bounds(Pixels), // Glyph bounds relative to origin
     advance: Pixels,
+    is_color: bool = false, // true if stored in color atlas (emoji)
+    scale: f32 = 1.0, // Scale factor for bitmap fonts (requested_size / native_size)
 };
 
 /// Internal font data
@@ -139,7 +141,8 @@ pub const TextSystem = struct {
     hb_buf: HB_Buffer,
     fonts: std.ArrayListUnmanaged(FontData),
     glyph_cache: std.AutoHashMapUnmanaged(GlyphCacheKey, CachedGlyph),
-    atlas: ?*GlAtlas,
+    atlas: ?*GlAtlas, // Grayscale atlas for regular glyphs
+    color_atlas: ?*GlAtlas, // BGRA atlas for color emoji
     temp_bitmap: []u8,
     temp_bitmap_size: usize,
 
@@ -160,6 +163,7 @@ pub const TextSystem = struct {
             .fonts = .{},
             .glyph_cache = .{},
             .atlas = null,
+            .color_atlas = null,
             .temp_bitmap = temp,
             .temp_bitmap_size = TEMP_BITMAP_SIZE,
         };
@@ -181,9 +185,14 @@ pub const TextSystem = struct {
         self.ft_lib.deinit();
     }
 
-    /// Set the atlas for glyph caching
+    /// Set the atlases for glyph caching
     pub fn setAtlas(self: *TextSystem, atlas: *GlAtlas) void {
         self.atlas = atlas;
+    }
+
+    /// Set the color atlas for emoji
+    pub fn setColorAtlas(self: *TextSystem, atlas: *GlAtlas) void {
+        self.color_atlas = atlas;
     }
 
     /// Load a font from a file path
@@ -282,7 +291,25 @@ pub const TextSystem = struct {
         const metrics = self.getFontMetrics(font_id, size);
 
         // Set pixel size for shaping
-        font.face.setPixelSizes(0, @intFromFloat(size)) catch return error.InvalidFont;
+        // For bitmap fonts (like emoji), we need to select a strike instead
+        const face_handle = font.face.handle;
+        const is_scalable = (face_handle.*.face_flags & 0x1) != 0; // FT_FACE_FLAG_SCALABLE
+        
+        // For bitmap fonts, calculate scale factor to render at requested size
+        var bitmap_scale: Pixels = 1.0;
+        if (is_scalable) {
+            font.face.setPixelSizes(0, @intFromFloat(size)) catch return error.InvalidFont;
+        } else if (font.face.hasFixedSizes()) {
+            // Bitmap font - select the best available strike
+            font.face.selectSize(0) catch return error.InvalidFont;
+            // Get the native size of the bitmap strike
+            const native_size: Pixels = @as(Pixels, @floatFromInt(face_handle.*.size.*.metrics.height)) / 64.0;
+            if (native_size > 0) {
+                bitmap_scale = size / native_size;
+            }
+        } else {
+            return error.InvalidFont;
+        }
 
         // Notify HarfBuzz that the FreeType face changed size
         harfbuzz.freetype.fontChanged(font.hb_font);
@@ -298,19 +325,21 @@ pub const TextSystem = struct {
         // Get shaped glyphs
         const glyph_infos = self.hb_buf.getGlyphInfos();
         const glyph_positions = self.hb_buf.getGlyphPositions() orelse return error.ShapingFailed;
+        
+
 
         // Allocate output glyphs
         const glyphs = try self.allocator.alloc(ShapedGlyph, glyph_infos.len);
         errdefer self.allocator.free(glyphs);
 
         // After calling hb_ft_font_changed, HarfBuzz positions are in 26.6 fixed-point
-        // (same as FreeType), so divide by 64 to get pixels
+        // (same as FreeType), so divide by 64 to get pixels, then scale for bitmap fonts
         var total_advance: Pixels = 0;
         for (glyph_infos, glyph_positions, 0..) |info, pos, i| {
-            const x_advance: Pixels = @as(Pixels, @floatFromInt(pos.x_advance)) / 64.0;
-            const y_advance: Pixels = @as(Pixels, @floatFromInt(pos.y_advance)) / 64.0;
-            const x_offset: Pixels = @as(Pixels, @floatFromInt(pos.x_offset)) / 64.0;
-            const y_offset: Pixels = @as(Pixels, @floatFromInt(pos.y_offset)) / 64.0;
+            const x_advance: Pixels = @as(Pixels, @floatFromInt(pos.x_advance)) / 64.0 * bitmap_scale;
+            const y_advance: Pixels = @as(Pixels, @floatFromInt(pos.y_advance)) / 64.0 * bitmap_scale;
+            const x_offset: Pixels = @as(Pixels, @floatFromInt(pos.x_offset)) / 64.0 * bitmap_scale;
+            const y_offset: Pixels = @as(Pixels, @floatFromInt(pos.y_offset)) / 64.0 * bitmap_scale;
 
             glyphs[i] = .{
                 .glyph_id = info.codepoint, // After shaping, this is the glyph index
@@ -352,17 +381,42 @@ pub const TextSystem = struct {
         }
 
         if (font_id >= self.fonts.items.len) return null;
-        const atlas = self.atlas orelse return null;
+        const mono_atlas = self.atlas orelse return null;
 
         var font = &self.fonts.items[font_id];
-
-        // Set pixel size
-        font.face.setPixelSizes(0, @intFromFloat(size)) catch return null;
-
-        // Load glyph with light hinting for sharper rendering
-        font.face.loadGlyph(glyph_id, .{ .render = true, .target = .light }) catch return null;
-
         const face_handle = font.face.handle;
+
+        // Check if font has color glyphs (emoji)
+        const has_color = font.face.hasColor();
+        const is_scalable = (face_handle.*.face_flags & 0x1) != 0; // FT_FACE_FLAG_SCALABLE
+
+        // Set pixel size - bitmap fonts need selectSize instead
+        // For bitmap fonts, calculate scale factor to render at requested size
+        var bitmap_scale: f32 = 1.0;
+        if (is_scalable) {
+            font.face.setPixelSizes(0, @intFromFloat(size)) catch return null;
+        } else if (font.face.hasFixedSizes()) {
+            font.face.selectSize(0) catch return null;
+            // Get the native size of the bitmap strike
+            const native_size: f32 = @as(f32, @floatFromInt(face_handle.*.size.*.metrics.height)) / 64.0;
+            if (native_size > 0) {
+                bitmap_scale = size / native_size;
+            }
+        } else {
+            return null;
+        }
+
+        // Load glyph - use FT_LOAD_COLOR for color fonts to get BGRA bitmaps
+        // For bitmap fonts, we just need default loading (they're already rendered)
+        const load_flags: freetype.LoadFlags = if (has_color and !is_scalable)
+            .{ .color = true } // Bitmap color font - no render needed
+        else if (has_color)
+            .{ .render = true, .color = true } // Scalable color font
+        else
+            .{ .render = true, .target = .light }; // Regular scalable font
+
+        font.face.loadGlyph(glyph_id, load_flags) catch return null;
+
         const glyph_slot = face_handle.*.glyph;
         const bitmap = glyph_slot.*.bitmap;
         const glyph_metrics = glyph_slot.*.metrics;
@@ -379,45 +433,83 @@ pub const TextSystem = struct {
             // Space or empty glyph
             const cached = CachedGlyph{
                 .atlas_bounds = Bounds(f32).zero,
-                .pixel_bounds = Bounds(Pixels).fromXYWH(bearing_x, -bearing_y, 0, 0),
-                .advance = advance,
+                .pixel_bounds = Bounds(Pixels).fromXYWH(bearing_x * bitmap_scale, -bearing_y * bitmap_scale, 0, 0),
+                .advance = advance * bitmap_scale,
+                .scale = bitmap_scale,
             };
             self.glyph_cache.put(self.allocator, cache_key, cached) catch {};
             return cached;
         }
 
+        // Detect if this glyph is actually color (BGRA bitmap)
+        // FT_PIXEL_MODE_BGRA = 7
+        const is_color_glyph = bitmap.pixel_mode == 7;
+        
+
+        
+
+
+        // Choose which atlas to use
+        const target_atlas = if (is_color_glyph)
+            self.color_atlas orelse mono_atlas
+        else
+            mono_atlas;
+
+        const bytes_per_pixel: u32 = if (is_color_glyph) 4 else 1;
+        const bitmap_size = glyph_w * glyph_h * bytes_per_pixel;
+
         // Check if bitmap fits in temp buffer
-        if (glyph_w * glyph_h > self.temp_bitmap_size) {
+        if (bitmap_size > self.temp_bitmap_size) {
             return null; // Glyph too large
         }
 
         // Copy bitmap data (FreeType bitmap may have padding)
         const pitch: usize = @intCast(@abs(bitmap.pitch));
-        for (0..glyph_h) |row| {
-            const src_offset = row * pitch;
-            const dst_offset = row * glyph_w;
-            @memcpy(
-                self.temp_bitmap[dst_offset..][0..glyph_w],
-                bitmap.buffer[src_offset..][0..glyph_w],
-            );
+        if (is_color_glyph) {
+            // BGRA bitmap - copy with BGRA→RGBA swizzle
+            for (0..glyph_h) |row| {
+                const src_row = bitmap.buffer + row * pitch;
+                const dst_offset = row * glyph_w * 4;
+                for (0..glyph_w) |col| {
+                    const src_offset = col * 4;
+                    const dst_col = dst_offset + col * 4;
+                    // BGRA → RGBA
+                    self.temp_bitmap[dst_col + 0] = src_row[src_offset + 2]; // R
+                    self.temp_bitmap[dst_col + 1] = src_row[src_offset + 1]; // G
+                    self.temp_bitmap[dst_col + 2] = src_row[src_offset + 0]; // B
+                    self.temp_bitmap[dst_col + 3] = src_row[src_offset + 3]; // A
+                }
+            }
+        } else {
+            // Grayscale bitmap
+            for (0..glyph_h) |row| {
+                const src_offset = row * pitch;
+                const dst_offset = row * glyph_w;
+                @memcpy(
+                    self.temp_bitmap[dst_offset..][0..glyph_w],
+                    bitmap.buffer[src_offset..][0..glyph_w],
+                );
+            }
         }
 
         // Allocate in atlas
-        const tile_opt = atlas.allocate(.{ .width = glyph_w, .height = glyph_h }) catch return null;
+        const tile_opt = target_atlas.allocate(.{ .width = glyph_w, .height = glyph_h }) catch return null;
         const tile = tile_opt orelse return null;
 
         // Upload to atlas
-        atlas.upload(tile, self.temp_bitmap[0 .. glyph_w * glyph_h]);
+        target_atlas.upload(tile, self.temp_bitmap[0..bitmap_size]);
 
         const cached = CachedGlyph{
             .atlas_bounds = tile.uv_bounds,
             .pixel_bounds = Bounds(Pixels).fromXYWH(
-                bearing_x,
-                -bearing_y, // Y is inverted (bearing_y is distance from baseline to top)
-                @floatFromInt(glyph_w),
-                @floatFromInt(glyph_h),
+                bearing_x * bitmap_scale,
+                -bearing_y * bitmap_scale, // Y is inverted (bearing_y is distance from baseline to top)
+                @as(Pixels, @floatFromInt(glyph_w)) * bitmap_scale,
+                @as(Pixels, @floatFromInt(glyph_h)) * bitmap_scale,
             ),
-            .advance = advance,
+            .advance = advance * bitmap_scale,
+            .is_color = is_color_glyph,
+            .scale = bitmap_scale,
         };
 
         self.glyph_cache.put(self.allocator, cache_key, cached) catch {};
@@ -434,7 +526,20 @@ pub const TextSystem = struct {
         size: Pixels,
         text_color: @import("color.zig").Hsla,
     ) !void {
-        const font_id: FontId = 0; // Default to first loaded font
+        try self.renderTextWithFont(scene, text_str, x, y, size, text_color, 0);
+    }
+
+    /// Render text with a specific font
+    pub fn renderTextWithFont(
+        self: *TextSystem,
+        scene: *@import("scene.zig").Scene,
+        text_str: []const u8,
+        x: Pixels,
+        y: Pixels,
+        size: Pixels,
+        text_color: @import("color.zig").Hsla,
+        font_id: FontId,
+    ) !void {
 
         // Shape the text
         var run = try self.shapeText(text_str, font_id, size);
@@ -448,16 +553,27 @@ pub const TextSystem = struct {
                     // Round positions to nearest pixel for crisp text
                     const px_x = @round(glyph_x + glyph.x_offset + cached.pixel_bounds.origin.x);
                     const px_y = @round(y + glyph.y_offset + cached.pixel_bounds.origin.y);
-                    try scene.insertMonoSprite(.{
-                        .bounds = Bounds(Pixels).fromXYWH(
-                            px_x,
-                            px_y,
-                            cached.pixel_bounds.size.width,
-                            cached.pixel_bounds.size.height,
-                        ),
-                        .color = text_color,
-                        .tile_bounds = cached.atlas_bounds,
-                    });
+                    const bounds = Bounds(Pixels).fromXYWH(
+                        px_x,
+                        px_y,
+                        cached.pixel_bounds.size.width,
+                        cached.pixel_bounds.size.height,
+                    );
+
+                    if (cached.is_color) {
+                        // Color emoji - use poly sprite (no tint)
+                        try scene.insertPolySprite(.{
+                            .bounds = bounds,
+                            .tile_bounds = cached.atlas_bounds,
+                        });
+                    } else {
+                        // Regular glyph - use mono sprite with color tint
+                        try scene.insertMonoSprite(.{
+                            .bounds = bounds,
+                            .color = text_color,
+                            .tile_bounds = cached.atlas_bounds,
+                        });
+                    }
                 }
             }
             glyph_x += glyph.x_advance;

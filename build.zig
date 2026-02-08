@@ -4,15 +4,38 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Get FreeType and HarfBuzz dependencies
+    // Get FreeType with libpng enabled for color emoji support
     const freetype_dep = b.dependency("freetype", .{
         .target = target,
         .optimize = optimize,
+        .@"enable-libpng" = true,
     });
-    const harfbuzz_dep = b.dependency("harfbuzz", .{
+
+    // Build HarfBuzz manually so we can share the freetype module (avoids module conflicts)
+    const harfbuzz_upstream = b.dependency("harfbuzz", .{});
+    const hb_lib = buildHarfbuzzLib(b, target, optimize, harfbuzz_upstream, freetype_dep);
+
+    // Create HarfBuzz Zig wrapper module that shares our freetype module
+    const harfbuzz_mod = b.addModule("harfbuzz", .{
+        .root_source_file = b.path("pkg/harfbuzz/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "freetype", .module = freetype_dep.module("freetype") },
+        },
     });
+    // Add HarfBuzz include path for hb.h
+    if (harfbuzz_upstream.builder.lazyDependency("harfbuzz", .{})) |upstream| {
+        harfbuzz_mod.addIncludePath(upstream.path("src"));
+    }
+    // Add FreeType include path for ft2build.h (needed by hb-ft.h)
+    if (freetype_dep.builder.lazyDependency("freetype", .{})) |ft_upstream| {
+        harfbuzz_mod.addIncludePath(ft_upstream.path("include"));
+    }
+    const hb_options = b.addOptions();
+    hb_options.addOption(bool, "coretext", false);
+    hb_options.addOption(bool, "freetype", true);
+    harfbuzz_mod.addOptions("build_options", hb_options);
 
     // Main zapui library module
     const zapui_mod = b.addModule("zapui", .{
@@ -21,7 +44,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "freetype", .module = freetype_dep.module("freetype") },
-            .{ .name = "harfbuzz", .module = harfbuzz_dep.module("harfbuzz") },
+            .{ .name = "harfbuzz", .module = harfbuzz_mod },
         },
     });
 
@@ -37,7 +60,7 @@ pub fn build(b: *std.Build) void {
 
     // Link FreeType and HarfBuzz
     lib.linkLibrary(freetype_dep.artifact("freetype"));
-    lib.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+    lib.linkLibrary(hb_lib);
 
     b.installArtifact(lib);
 
@@ -48,7 +71,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "freetype", .module = freetype_dep.module("freetype") },
-            .{ .name = "harfbuzz", .module = harfbuzz_dep.module("harfbuzz") },
+            .{ .name = "harfbuzz", .module = harfbuzz_mod },
         },
     });
     test_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
@@ -60,7 +83,7 @@ pub fn build(b: *std.Build) void {
     });
     lib_unit_tests.linkLibC();
     lib_unit_tests.linkLibrary(freetype_dep.artifact("freetype"));
-    lib_unit_tests.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+    lib_unit_tests.linkLibrary(hb_lib);
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
@@ -84,7 +107,7 @@ pub fn build(b: *std.Build) void {
     playground.linkSystemLibrary("glfw");
     playground.linkLibC();
     playground.linkLibrary(freetype_dep.artifact("freetype"));
-    playground.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+    playground.linkLibrary(hb_lib);
 
     b.installArtifact(playground);
 
@@ -113,7 +136,7 @@ pub fn build(b: *std.Build) void {
     taffy_demo.linkSystemLibrary("glfw");
     taffy_demo.linkLibC();
     taffy_demo.linkLibrary(freetype_dep.artifact("freetype"));
-    taffy_demo.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+    taffy_demo.linkLibrary(hb_lib);
 
     b.installArtifact(taffy_demo);
 
@@ -139,7 +162,7 @@ pub fn build(b: *std.Build) void {
     taffy_visual.linkSystemLibrary("glfw");
     taffy_visual.linkLibC();
     taffy_visual.linkLibrary(freetype_dep.artifact("freetype"));
-    taffy_visual.linkLibrary(harfbuzz_dep.artifact("harfbuzz"));
+    taffy_visual.linkLibrary(hb_lib);
 
     b.installArtifact(taffy_visual);
 
@@ -147,4 +170,57 @@ pub fn build(b: *std.Build) void {
     run_taffy_visual.step.dependOn(b.getInstallStep());
     const taffy_visual_step = b.step("taffy-visual", "Run the Taffy visual demo");
     taffy_visual_step.dependOn(&run_taffy_visual.step);
+}
+
+/// Build HarfBuzz C++ library from source, linking against our shared FreeType
+fn buildHarfbuzzLib(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    hb_dep: *std.Build.Dependency,
+    ft_dep: *std.Build.Dependency,
+) *std.Build.Step.Compile {
+    const lib = b.addLibrary(.{
+        .name = "harfbuzz",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+        .linkage = .static,
+    });
+    lib.linkLibC();
+    lib.linkLibCpp();
+
+    var flags: std.ArrayList([]const u8) = .empty;
+    defer flags.deinit(b.allocator);
+    flags.appendSlice(b.allocator, &.{
+        "-DHAVE_STDBOOL_H",
+        "-DHAVE_FREETYPE=1",
+        "-DHAVE_FT_GET_VAR_BLEND_COORDINATES=1",
+        "-DHAVE_FT_SET_VAR_BLEND_COORDINATES=1",
+        "-DHAVE_FT_DONE_MM_VAR=1",
+        "-DHAVE_FT_GET_TRANSFORM=1",
+    }) catch @panic("OOM");
+
+    if (target.result.os.tag != .windows) {
+        flags.appendSlice(b.allocator, &.{
+            "-DHAVE_UNISTD_H",
+            "-DHAVE_SYS_MMAN_H",
+            "-DHAVE_PTHREAD=1",
+        }) catch @panic("OOM");
+    }
+
+    // Link our shared FreeType
+    lib.linkLibrary(ft_dep.artifact("freetype"));
+
+    // Compile HarfBuzz C++ source
+    if (hb_dep.builder.lazyDependency("harfbuzz", .{})) |upstream| {
+        lib.addIncludePath(upstream.path("src"));
+        lib.addCSourceFile(.{
+            .file = upstream.path("src/harfbuzz.cc"),
+            .flags = flags.items,
+        });
+    }
+
+    return lib;
 }

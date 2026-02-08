@@ -408,6 +408,9 @@ pub const GlRenderer = struct {
 
         // Draw sprites (text glyphs)
         try self.drawMonoSprites(scene.getMonoSprites());
+
+        // Draw color sprites (emoji)
+        try self.drawPolySprites(scene.getPolySprites());
     }
 
     fn drawQuads(self: *GlRenderer, quads: []const Quad) !void {
@@ -561,9 +564,63 @@ pub const GlRenderer = struct {
         gl.glBindVertexArray(0);
     }
 
+    fn drawPolySprites(self: *GlRenderer, sprites: []const scene_mod.PolychromeSprite) !void {
+        if (sprites.len == 0) return;
+
+        // Build instance data - reuse sprite_instances buffer
+        self.sprite_instances.clearRetainingCapacity();
+        for (sprites) |sprite| {
+            const mask = sprite.content_mask orelse geometry.Bounds(f32).zero;
+
+            try self.sprite_instances.append(self.allocator, .{
+                .bounds_x = sprite.bounds.origin.x,
+                .bounds_y = sprite.bounds.origin.y,
+                .bounds_w = sprite.bounds.size.width,
+                .bounds_h = sprite.bounds.size.height,
+                .uv_x = sprite.tile_bounds.origin.x,
+                .uv_y = sprite.tile_bounds.origin.y,
+                .uv_w = sprite.tile_bounds.size.width,
+                .uv_h = sprite.tile_bounds.size.height,
+                // White color = no tint, just use texture color
+                .color_r = 1.0,
+                .color_g = 1.0,
+                .color_b = 1.0,
+                .color_a = 1.0,
+                .mask_x = mask.origin.x,
+                .mask_y = mask.origin.y,
+                .mask_w = mask.size.width,
+                .mask_h = mask.size.height,
+            });
+        }
+
+        // Upload instance data
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.sprite_instance_vbo);
+        const data_size: gl.GLsizeiptr = @intCast(self.sprite_instances.items.len * @sizeOf(SpriteInstance));
+        if (self.sprite_instances.items.len > 0) {
+            gl.glBufferSubData(gl.GL_ARRAY_BUFFER, 0, data_size, self.sprite_instances.items.ptr);
+        }
+
+        // Bind color atlas texture (image_atlas is BGRA)
+        self.image_atlas.bind(0);
+
+        // Draw with polychrome mode (u_mono = 0)
+        self.sprite_program.use();
+        self.sprite_program.setViewport(self.viewport_size.width, self.viewport_size.height);
+        self.sprite_program.setUniformInt("u_texture", 0);
+        self.sprite_program.setUniformInt("u_mono", 0); // Polychrome mode
+        gl.glBindVertexArray(self.sprite_vao);
+        gl.glDrawArraysInstanced(gl.GL_TRIANGLES, 0, 6, @intCast(self.sprite_instances.items.len));
+        gl.glBindVertexArray(0);
+    }
+
     /// Get the glyph atlas for text rendering
     pub fn getGlyphAtlas(self: *GlRenderer) *GlAtlas {
         return &self.glyph_atlas;
+    }
+
+    /// Get the color atlas for emoji rendering
+    pub fn getColorAtlas(self: *GlRenderer) *GlAtlas {
+        return &self.image_atlas;
     }
 
     /// Get the CPU-side atlas for direct manipulation

@@ -251,6 +251,11 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
     try root.build(tree, rem);
     tree.computeLayoutWithSize(root.node_id.?, width, height);
     root.paint(scene, text_system, 0, 0, tree, addHitbox, isHovered);
+
+    // Test emoji rendering (font_id 1 = emoji font)
+    if (text_system.fonts.items.len > 1) {
+        text_system.renderTextWithFont(scene, "🎉🚀✨", width - 120, 50, 24, C.white, 1) catch {};
+    }
 }
 
 // ============================================================================
@@ -330,7 +335,11 @@ pub fn main() !void {
         std.debug.print("Failed to load font\n", .{});
         return;
     };
+    // Load emoji font for color emoji support
+    _ = text_system.loadFontFile("assets/fonts/NotoColorEmoji.ttf") catch null;
+    
     text_system.setAtlas(renderer.getGlyphAtlas());
+    text_system.setColorAtlas(renderer.getColorAtlas());
 
     while (glfw.glfwWindowShouldClose(win) == 0) {
         glfw.glfwPollEvents();
