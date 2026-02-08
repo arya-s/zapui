@@ -12,6 +12,7 @@ const Point = geometry.Point;
 const Size = geometry.Size;
 const Bounds = geometry.Bounds;
 const Atlas = atlas_mod.Atlas;
+const GlAtlas = atlas_mod.GlAtlas;
 const AtlasTile = atlas_mod.AtlasTile;
 
 // stb_truetype C bindings
@@ -130,7 +131,7 @@ pub const TextSystem = struct {
     allocator: Allocator,
     fonts: std.ArrayListUnmanaged(FontData),
     glyph_cache: std.AutoHashMapUnmanaged(GlyphCacheKey, CachedGlyph),
-    atlas: ?*Atlas,
+    atlas: ?*GlAtlas,
     temp_bitmap: []u8,
     temp_bitmap_size: usize,
 
@@ -160,7 +161,7 @@ pub const TextSystem = struct {
     }
 
     /// Set the atlas for glyph caching
-    pub fn setAtlas(self: *TextSystem, atlas: *Atlas) void {
+    pub fn setAtlas(self: *TextSystem, atlas: *GlAtlas) void {
         self.atlas = atlas;
     }
 

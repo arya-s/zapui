@@ -208,6 +208,9 @@ pub const FontMetrics = text_system.FontMetrics;
 // Renderer types
 pub const GlRenderer = renderer.gl_renderer.GlRenderer;
 pub const Atlas = renderer.atlas.Atlas;
+pub const GlAtlas = renderer.atlas.GlAtlas;
+pub const AtlasFormat = renderer.atlas.Format;
+pub const AtlasRegion = renderer.atlas.Region;
 
 /// Load OpenGL function pointers (call after creating GL context)
 pub fn loadGl(getProcAddress: *const fn ([*:0]const u8) ?*anyopaque) !void {

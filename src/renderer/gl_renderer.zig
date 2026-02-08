@@ -16,7 +16,9 @@ const Scene = scene_mod.Scene;
 const Quad = scene_mod.Quad;
 const Shadow = scene_mod.Shadow;
 const ShaderProgram = shaders.ShaderProgram;
+const GlAtlas = atlas_mod.GlAtlas;
 const Atlas = atlas_mod.Atlas;
+const Format = atlas_mod.Format;
 const Hsla = color.Hsla;
 
 /// Instance data for quad rendering
@@ -130,8 +132,8 @@ pub const GlRenderer = struct {
     shadow_instance_vbo: gl.GLuint,
     sprite_vao: gl.GLuint,
     sprite_instance_vbo: gl.GLuint,
-    glyph_atlas: Atlas,
-    image_atlas: Atlas,
+    glyph_atlas: GlAtlas,
+    image_atlas: GlAtlas,
     viewport_size: Size(f32),
     scale_factor: f32,
     max_instances: usize,
@@ -316,11 +318,11 @@ pub const GlRenderer = struct {
 
         gl.glBindVertexArray(0);
 
-        // Create atlases
-        var glyph_atlas = try Atlas.init(allocator, 1024, 1024, true);
+        // Create atlases (using new GlAtlas with skyline packing)
+        var glyph_atlas = try GlAtlas.init(allocator, 1024, .grayscale);
         errdefer glyph_atlas.deinit();
 
-        var image_atlas = try Atlas.init(allocator, 2048, 2048, false);
+        var image_atlas = try GlAtlas.init(allocator, 2048, .bgra);
         errdefer image_atlas.deinit();
 
         return .{
@@ -546,9 +548,8 @@ pub const GlRenderer = struct {
             gl.glBufferSubData(gl.GL_ARRAY_BUFFER, 0, data_size, self.sprite_instances.items.ptr);
         }
 
-        // Bind glyph atlas texture
-        gl.glActiveTexture(gl.GL_TEXTURE0);
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.glyph_atlas.texture);
+        // Bind glyph atlas texture (syncs CPU data to GPU if modified)
+        self.glyph_atlas.bind(0);
 
         // Draw
         self.sprite_program.use();
@@ -561,7 +562,12 @@ pub const GlRenderer = struct {
     }
 
     /// Get the glyph atlas for text rendering
-    pub fn getGlyphAtlas(self: *GlRenderer) *Atlas {
+    pub fn getGlyphAtlas(self: *GlRenderer) *GlAtlas {
         return &self.glyph_atlas;
+    }
+
+    /// Get the CPU-side atlas for direct manipulation
+    pub fn getGlyphAtlasCpu(self: *GlRenderer) *Atlas {
+        return &self.glyph_atlas.atlas;
     }
 };
