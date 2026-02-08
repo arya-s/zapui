@@ -3,9 +3,9 @@
 //! Native Windows renderer using Direct3D 11.
 
 const std = @import("std");
-const win32 = @import("win32");
+pub const win32 = @import("win32");
 
-const d3d11 = win32.graphics.direct3d11;
+pub const d3d11 = win32.graphics.direct3d11;
 const d3d = win32.graphics.direct3d;
 const dxgi = win32.graphics.dxgi;
 const fxc = win32.graphics.direct3d.fxc;
@@ -15,7 +15,7 @@ const ID3DBlob = d3d.ID3DBlob;
 
 const HWND = foundation.HWND;
 const HRESULT = foundation.HRESULT;
-const S_OK = foundation.S_OK;
+pub const S_OK = foundation.S_OK;
 
 const Allocator = std.mem.Allocator;
 

@@ -65,7 +65,7 @@ pub const D3D11Atlas = struct {
         // Create SRV
         var srv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
         srv_desc.Format = tex_desc.Format;
-        srv_desc.ViewDimension = ._DIMENSION_TEXTURE2D;
+        srv_desc.ViewDimension = ._SRV_DIMENSION_TEXTURE2D;
         srv_desc.Anonymous.Texture2D.MostDetailedMip = 0;
         srv_desc.Anonymous.Texture2D.MipLevels = 1;
 
