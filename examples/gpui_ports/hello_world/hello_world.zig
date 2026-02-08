@@ -1,31 +1,35 @@
 //! Hello World - Port of GPUI's hello_world.rs example
+//!
+//! This version uses ZapUI's div element system, matching GPUI's API closely.
 
 const std = @import("std");
 const zapui = @import("zapui");
 
+// Element system
+const div_mod = zapui.elements.div;
+const div = div_mod.div;
+const px = div_mod.px;
+
+// Layout
+const zaffy = zapui.zaffy;
+
+// Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
-const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
+const Scene = zapui.scene.Scene;
+
+// Platform
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors
-fn rgb(hex: u24) [4]f32 {
-    return .{
-        @as(f32, @floatFromInt((hex >> 16) & 0xFF)) / 255.0,
-        @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255.0,
-        @as(f32, @floatFromInt(hex & 0xFF)) / 255.0,
-        1.0,
-    };
-}
-// rgb(0x0000ff)
-// rgb(0x505050)
-const black = [4]f32{ 0, 0, 0, 1 };
-const blue = [4]f32{ 0, 0, 1, 1 };
-// rgb(0xffffff)
-const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()
-const red = [4]f32{ 1, 0, 0, 1 };
-const white = [4]f32{ 1, 1, 1, 1 };
-const yellow = [4]f32{ 1, 1, 0, 1 };
+// Colors (matches GPUI's color functions)
+const color = zapui.color;
+const rgb = color.rgb;
+const red = color.red;
+const green = color.green;
+const blue = color.blue;
+const yellow = color.yellow;
+const black = color.black;
+const white = color.white;
 
 // ============================================================================
 // HelloWorld
@@ -34,67 +38,106 @@ const yellow = [4]f32{ 1, 1, 0, 1 };
 const HelloWorld = struct {
     text: []const u8,
 
-    // Port of GPUI's Render trait implementation:
+    // Port of GPUI's Render trait:
     //
-    // div()
-    //     .flex().flex_col().gap_3()
-    //     .bg(rgb(0x505050))
-    //     .size(px(500.0))
-    //     .justify_center().items_center()
-    //     .text_xl().text_color(rgb(0xffffff))
-    //     .child(format!("Hello, {}!", &self.text))
-    //     .child(div().flex().gap_2()
-    //         .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //         .child(div().size_8().bg(gpui::green())...)
-    //         ...
-    //     )
+    // fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    //     div()
+    //         .flex()
+    //         .flex_col()
+    //         .gap_3()
+    //         .bg(rgb(0x505050))
+    //         .size(px(500.0))
+    //         .justify_center()
+    //         .items_center()
+    //         .text_xl()
+    //         .text_color(rgb(0xffffff))
+    //         .child(format!("Hello, {}!", &self.text))
+    //         .child(
+    //             div()
+    //                 .flex()
+    //                 .gap_2()
+    //                 .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+    //                 .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
+    //         )
+    // }
     //
-    fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {
-        // div().bg(rgb(0x505050)).size(px(500.0))
-        const bg = rgb(0x505050);
-        renderer.clear(bg[0], bg[1], bg[2], bg[3]);
+    fn render(self: *HelloWorld, allocator: std.mem.Allocator, label_buf: []u8) !*div_mod.Div {
+        _ = allocator;
 
-        // Layout: .flex_col().gap_3().justify_center().items_center()
-        const size_8: f32 = 32;   // .size_8()
-        const gap_2: f32 = 8;     // .gap_2()
-        const gap_3: f32 = 12;    // .gap_3()
-        const text_xl: f32 = 20;  // .text_xl()
+        // Format the text (into provided buffer for lifetime)
+        const label = std.fmt.bufPrint(label_buf, "Hello, {s}!", .{self.text}) catch "Hello!";
 
-        const content_h = text_xl + gap_3 + size_8;
-        const y = (500 - content_h) / 2;
-        const row_w = 6 * size_8 + 5 * gap_2;
-        const x = (500 - row_w) / 2;
-
-        // .child(format!("Hello, {}!", &self.text))
-        var buf: [64]u8 = undefined;
-        const label = std.fmt.bufPrint(&buf, "Hello, {s}!", .{self.text}) catch "Hello!";
-        text_renderer.drawCentered(renderer, label, 250, y + 16, white);
-
-        // .child(div().flex().gap_2() ...)
-        const row_y = y + text_xl + gap_3;
-        const quads = [_]QuadInstance{
-            quad(x + 0 * (size_8 + gap_2), row_y, size_8, red, white),
-            quad(x + 1 * (size_8 + gap_2), row_y, size_8, green, white),
-            quad(x + 2 * (size_8 + gap_2), row_y, size_8, blue, white),
-            quad(x + 3 * (size_8 + gap_2), row_y, size_8, yellow, white),
-            quad(x + 4 * (size_8 + gap_2), row_y, size_8, black, white),
-            quad(x + 5 * (size_8 + gap_2), row_y, size_8, white, black),
-        };
-        renderer.drawQuads(&quads);
+        // Build the UI tree (matches GPUI exactly)
+        // Note: In GPUI, .child("text") creates a text child element.
+        // In ZapUI, we use a div with child_text() for the same effect.
+        return div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x505050))
+            .size(px(500))
+            .justify_center()
+            .items_center()
+            .text_xl()
+            .text_color(rgb(0xffffff))
+            .child(div().child_text(label))  // text as a child div
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
+                    .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
+                    .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
+                    .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
+                    .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
+                    .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black()))
+            );
     }
 };
 
-// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
-fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
-    return .{
-        .bounds = .{ x, y, size, size },
-        .background_color = bg,
-        .border_color = border,
-        .border_widths = .{ 1, 1, 1, 1 },
-        .corner_radii = .{ 6, 6, 6, 6 },
-        .border_style = .{ 1, 0, 0, 0 }, // dashed
-        .content_mask = .{ 0, 0, 0, 0 },
-    };
+// ============================================================================
+// Text Rendering Helper
+// ============================================================================
+
+/// Recursively draw text for div tree using D3D11TextRenderer
+fn drawTextForDiv(
+    d: *const div_mod.Div,
+    layout_tree: *const zaffy.Zaffy,
+    text_renderer: *D3D11TextRenderer,
+    renderer: *D3D11Renderer,
+    parent_x: f32,
+    parent_y: f32,
+) void {
+    const nid = d.node_id orelse return;
+    const lay = layout_tree.getLayout(nid);
+    const x = parent_x + lay.location.x;
+    const y = parent_y + lay.location.y;
+
+    // Draw text content if present
+    if (d.text_content_val) |text| {
+        const text_w = text_renderer.measureText(text);
+        // Center horizontally, vertically (accounting for font baseline)
+        const tx = x + (lay.size.width - text_w) / 2;
+        const ty = y + lay.size.height / 2 + 6; // baseline offset
+        const text_color = d.text_color_val;
+        text_renderer.draw(renderer, text, tx, ty, .{
+            text_color.toRgba().r,
+            text_color.toRgba().g,
+            text_color.toRgba().b,
+            text_color.toRgba().a,
+        });
+    }
+
+    // Recurse into children
+    for (d.children[0..d.child_count]) |maybe_child| {
+        if (maybe_child) |child| {
+            drawTextForDiv(child, layout_tree, text_renderer, renderer, x, y);
+        }
+    }
 }
 
 // ============================================================================
@@ -104,6 +147,9 @@ fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
 const font_data = @embedFile("LiberationSans-Regular.ttf");
 
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    // Platform
     var platform = try Win32.init();
     defer platform.deinit();
 
@@ -114,12 +160,30 @@ pub fn main() !void {
     });
     defer window.destroy();
 
-    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, 500, 500);
+    // Renderer
+    var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    var text_renderer = try D3D11TextRenderer.init(std.heap.page_allocator, &renderer, font_data, 20);
+    // Text system (for measuring and rendering text)
+    var text_system = try zapui.text_system.TextSystem.init(allocator);
+    defer text_system.deinit();
+
+    // Load font into text system
+    _ = try text_system.loadFontMem(font_data);
+
+    // Text renderer (D3D11 specific)
+    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, font_data, 20);
     defer text_renderer.deinit();
 
+    // Layout engine
+    var layout = zaffy.Zaffy.init(allocator);
+    defer layout.deinit();
+
+    // Scene (collects primitives for rendering)
+    var scene = Scene.init(allocator);
+    defer scene.deinit();
+
+    // Application state
     var state = HelloWorld{ .text = "World" };
 
     while (!window.shouldClose()) {
@@ -131,8 +195,31 @@ pub fn main() !void {
             }
         }
 
+        // Reset element storage for this frame
+        div_mod.reset();
+
+        // Build UI tree (use static buffer for text lifetime)
+        var label_buf: [64]u8 = undefined;
+        const root = try state.render(allocator, &label_buf);
+
+        // Layout
+        try root.buildWithTextSystem(&layout, 16, &text_system);
+        layout.computeLayoutWithSize(root.node_id.?, 500, 500);
+
+        // Render
         renderer.beginFrame();
-        state.render(&renderer, &text_renderer);
+        renderer.clear(0.314, 0.314, 0.314, 1.0); // rgb(0x505050)
+
+        scene.clear();
+        root.paint(&scene, &text_system, 0, 0, &layout, null, null);
+        scene.finish();
+
+        renderer.drawScene(&scene);
+
+        // Draw text separately using D3D11TextRenderer
+        // (scene MonochromeSprites need atlas integration with D3D11)
+        drawTextForDiv(root, &layout, &text_renderer, &renderer, 0, 0);
+
         renderer.present(true);
     }
 }

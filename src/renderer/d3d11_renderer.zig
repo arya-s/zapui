@@ -19,6 +19,12 @@ pub const S_OK = foundation.S_OK;
 
 const Allocator = std.mem.Allocator;
 
+// Scene integration
+const scene_mod = @import("../scene.zig");
+const Scene = scene_mod.Scene;
+const color_mod = @import("../color.zig");
+const Hsla = color_mod.Hsla;
+
 // Helper to release COM objects
 fn release(comptime T: type, obj: *T) void {
     _ = obj.IUnknown.vtable.Release(&obj.IUnknown);
@@ -786,5 +792,62 @@ pub const D3D11Renderer = struct {
     pub fn present(self: *D3D11Renderer, vsync: bool) void {
         const sync_interval: u32 = if (vsync) 1 else 0;
         _ = self.swap_chain.vtable.Present(self.swap_chain, sync_interval, 0);
+    }
+
+    // ========================================================================
+    // Scene Integration
+    // ========================================================================
+
+    /// Draw a scene containing quads, shadows, and sprites
+    pub fn drawScene(self: *D3D11Renderer, scene: *const Scene) void {
+        // Draw shadows first (behind everything)
+        const shadows = scene.getShadows();
+        if (shadows.len > 0) {
+            // TODO: Implement shadow rendering for D3D11
+            // For now, shadows are skipped
+        }
+
+        // Draw quads
+        const quads = scene.getQuads();
+        if (quads.len > 0) {
+            var instances: [256]QuadInstance = undefined;
+            const count = @min(quads.len, 256);
+            
+            for (quads[0..count], 0..) |q, i| {
+                instances[i] = sceneQuadToInstance(q);
+            }
+            
+            self.drawQuads(instances[0..count]);
+        }
+
+        // Note: Sprites (text) require a texture atlas.
+        // Use D3D11TextRenderer for text rendering instead.
+    }
+
+    /// Convert a scene Quad to a D3D11 QuadInstance
+    fn sceneQuadToInstance(q: scene_mod.Quad) QuadInstance {
+        const bg_color = if (q.background) |bg| switch (bg) {
+            .solid => |c| hslaToRgba(c),
+        } else [4]f32{ 0, 0, 0, 0 };
+
+        const border_color = if (q.border_color) |c| hslaToRgba(c) else [4]f32{ 0, 0, 0, 0 };
+
+        const mask = if (q.content_mask) |m| [4]f32{ m.origin.x, m.origin.y, m.size.width, m.size.height } else [4]f32{ 0, 0, 0, 0 };
+
+        return .{
+            .bounds = .{ q.bounds.origin.x, q.bounds.origin.y, q.bounds.size.width, q.bounds.size.height },
+            .background_color = bg_color,
+            .border_color = border_color,
+            .border_widths = .{ q.border_widths.top, q.border_widths.right, q.border_widths.bottom, q.border_widths.left },
+            .corner_radii = .{ q.corner_radii.top_left, q.corner_radii.top_right, q.corner_radii.bottom_right, q.corner_radii.bottom_left },
+            .content_mask = mask,
+            .border_style = .{ if (q.border_style == .dashed) 1.0 else 0.0, 0, 0, 0 },
+        };
+    }
+
+    /// Convert HSLA color to RGBA float array
+    fn hslaToRgba(hsla: Hsla) [4]f32 {
+        const rgb = hsla.toRgba();
+        return .{ rgb.r, rgb.g, rgb.b, rgb.a };
     }
 };
