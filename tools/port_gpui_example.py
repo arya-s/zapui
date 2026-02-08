@@ -350,15 +350,65 @@ def main():
     
     zig_code = generate_zig_skeleton(name, rust_code, analysis)
     
-    output_file = f"playground/{name}.zig"
+    # Create example directory structure
+    example_dir = f"examples/gpui_ports/{name}"
+    import os
+    os.makedirs(example_dir, exist_ok=True)
+    
+    output_file = f"{example_dir}/{name}.zig"
     print(f"\nGenerating: {output_file}")
     
     with open(output_file, 'w') as f:
         f.write(zig_code)
     
-    print(f"\n✅ Generated {output_file}")
-    print(f"   Edit the file and add to build.zig to compile.")
-    print(f"\n   View original Rust: https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs")
+    # Save original Rust source for reference
+    rust_file = f"{example_dir}/{name}.rs"
+    with open(rust_file, 'w') as f:
+        f.write(rust_code)
+    
+    # Create README for this example
+    readme_file = f"{example_dir}/README.md"
+    with open(readme_file, 'w') as f:
+        f.write(f"""# {name.replace('_', ' ').title()}
+
+Port of GPUI's `{name}.rs` example to ZapUI.
+
+## Files
+
+- `{name}.zig` - ZapUI port (Zig)
+- `{name}.rs` - Original GPUI source (Rust)
+- `screenshots/` - Visual comparison (after running)
+
+## Status
+
+{'⚠️ Needs work - see warnings below' if analysis['warnings'] else '✅ Should be straightforward to port'}
+
+### Warnings
+{chr(10).join(f'- {w}' for w in set(analysis['warnings'])) if analysis['warnings'] else 'None'}
+
+## Build & Run
+
+```bash
+# Add build target to build.zig, then:
+zig build {name}
+./zig-out/bin/{name}
+```
+
+## Original
+
+- [View on GitHub](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs)
+""")
+    
+    # Create screenshots directory
+    os.makedirs(f"{example_dir}/screenshots", exist_ok=True)
+    
+    print(f"\n✅ Generated example in {example_dir}/")
+    print(f"   - {name}.zig (ZapUI port)")
+    print(f"   - {name}.rs (original Rust)")
+    print(f"   - README.md (status & notes)")
+    print(f"   - screenshots/ (for comparisons)")
+    print(f"\n   Edit {output_file} and add to build.zig to compile.")
+    print(f"\n   View original: https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/{name}.rs")
 
 
 if __name__ == '__main__':
