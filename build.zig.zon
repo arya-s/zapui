@@ -22,5 +22,9 @@
             .url = "https://github.com/zig-gamedev/zopengl/archive/refs/heads/main.tar.gz",
             .hash = "zopengl-0.6.0-dev-5-tnz7OjDgCMUH3dLn6zVzohxKV-FhrXXh13-HZSl2Ul",
         },
+        .zigwin32 = .{
+            .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
+            .hash = "zigwin32-25.0.28-preview-AAAAAB6N5AP3iLHsHKzg7r_aiDyYWo92qLOAG2eBLWhE",
+        },
     },
 }
