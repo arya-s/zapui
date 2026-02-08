@@ -454,7 +454,11 @@ pub const Div = struct {
         }
 
         if (self.text_content_val) |t| {
-            const tw = @as(Pixels, @floatFromInt(t.len)) * self.text_size_val * 0.55;
+            // Use actual text measurement instead of approximations
+            const font_id: text_system_mod.FontId = 0;
+            const tw = text_system.measureText(t, font_id, self.text_size_val);
+            const metrics = text_system.getFontMetrics(font_id, self.text_size_val);
+            
             const padding_l = self.style.padding.left.resolve(null, 16) orelse 0;
             const padding_r = self.style.padding.right.resolve(null, 16) orelse 0;
             const padding_t = self.style.padding.top.resolve(null, 16) orelse 0;
@@ -468,12 +472,14 @@ pub const Div = struct {
                 else => 0,
             };
             
-            const text_baseline_offset = self.text_size_val * 0.35;
+            // Use actual font metrics for baseline positioning
+            // Text height = ascent - descent (descent is negative)
+            // For vertical centering: baseline = (inner_h + ascent + descent) / 2
             const ty = y + padding_t + switch (self.style.align_items orelse .stretch) {
-                .center => inner_h / 2 + text_baseline_offset,
-                .flex_end => inner_h - self.text_size_val + text_baseline_offset,
-                .flex_start => self.text_size_val * 0.75,
-                else => inner_h / 2 + text_baseline_offset,
+                .center => (inner_h + metrics.ascent + metrics.descent) / 2,
+                .flex_end => inner_h + metrics.descent,
+                .flex_start => metrics.ascent,
+                else => (inner_h + metrics.ascent + metrics.descent) / 2,
             };
             
             text_system.renderText(scene, t, tx, ty, self.text_size_val, effective_text_color) catch {};
