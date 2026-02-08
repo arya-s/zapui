@@ -141,6 +141,27 @@ pub const Div = struct {
     pub fn min_h(self: *Self, height: Px) *Self { self.style.min_size.height = .{ .px = height.value }; return self; }
     pub fn max_w(self: *Self, width: Px) *Self { self.style.max_size.width = .{ .px = width.value }; return self; }
     pub fn max_h(self: *Self, height: Px) *Self { self.style.max_size.height = .{ .px = height.value }; return self; }
+    
+    /// Set both width and height (matches GPUI's .size())
+    pub fn size(self: *Self, val: Px) *Self { 
+        self.style.size.width = .{ .px = val.value }; 
+        self.style.size.height = .{ .px = val.value }; 
+        return self; 
+    }
+    
+    /// Size presets (matches GPUI's size_N where N * 4 = pixels)
+    pub fn size_1(self: *Self) *Self { self.style.size.width = .{ .px = 4 }; self.style.size.height = .{ .px = 4 }; return self; }
+    pub fn size_2(self: *Self) *Self { self.style.size.width = .{ .px = 8 }; self.style.size.height = .{ .px = 8 }; return self; }
+    pub fn size_3(self: *Self) *Self { self.style.size.width = .{ .px = 12 }; self.style.size.height = .{ .px = 12 }; return self; }
+    pub fn size_4(self: *Self) *Self { self.style.size.width = .{ .px = 16 }; self.style.size.height = .{ .px = 16 }; return self; }
+    pub fn size_5(self: *Self) *Self { self.style.size.width = .{ .px = 20 }; self.style.size.height = .{ .px = 20 }; return self; }
+    pub fn size_6(self: *Self) *Self { self.style.size.width = .{ .px = 24 }; self.style.size.height = .{ .px = 24 }; return self; }
+    pub fn size_7(self: *Self) *Self { self.style.size.width = .{ .px = 28 }; self.style.size.height = .{ .px = 28 }; return self; }
+    pub fn size_8(self: *Self) *Self { self.style.size.width = .{ .px = 32 }; self.style.size.height = .{ .px = 32 }; return self; }
+    pub fn size_9(self: *Self) *Self { self.style.size.width = .{ .px = 36 }; self.style.size.height = .{ .px = 36 }; return self; }
+    pub fn size_10(self: *Self) *Self { self.style.size.width = .{ .px = 40 }; self.style.size.height = .{ .px = 40 }; return self; }
+    pub fn size_12(self: *Self) *Self { self.style.size.width = .{ .px = 48 }; self.style.size.height = .{ .px = 48 }; return self; }
+    pub fn size_16(self: *Self) *Self { self.style.size.width = .{ .px = 64 }; self.style.size.height = .{ .px = 64 }; return self; }
 
     // ========================================================================
     // Gap
@@ -152,6 +173,18 @@ pub const Div = struct {
     }
     pub fn gap_x(self: *Self, val: Px) *Self { self.style.gap.width = .{ .px = val.value }; return self; }
     pub fn gap_y(self: *Self, val: Px) *Self { self.style.gap.height = .{ .px = val.value }; return self; }
+    
+    /// Gap presets (matches GPUI's gap_N where N * 4 = pixels)
+    pub fn gap_0(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 0 }, .height = .{ .px = 0 } }; return self; }
+    pub fn gap_1(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 4 }, .height = .{ .px = 4 } }; return self; }
+    pub fn gap_2(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 8 }, .height = .{ .px = 8 } }; return self; }
+    pub fn gap_3(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 12 }, .height = .{ .px = 12 } }; return self; }
+    pub fn gap_4(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 16 }, .height = .{ .px = 16 } }; return self; }
+    pub fn gap_5(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 20 }, .height = .{ .px = 20 } }; return self; }
+    pub fn gap_6(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 24 }, .height = .{ .px = 24 } }; return self; }
+    pub fn gap_8(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 32 }, .height = .{ .px = 32 } }; return self; }
+    pub fn gap_10(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 40 }, .height = .{ .px = 40 } }; return self; }
+    pub fn gap_12(self: *Self) *Self { self.style.gap = .{ .width = .{ .px = 48 }, .height = .{ .px = 48 } }; return self; }
 
     // ========================================================================
     // Padding
@@ -250,6 +283,88 @@ pub const Div = struct {
     pub fn bg(self: *Self, color: Hsla) *Self { self.style.background = .{ .solid = color }; return self; }
 
     // ========================================================================
+    // Shadow
+    // ========================================================================
+
+    /// Custom shadow
+    pub fn shadow(self: *Self, shadow_def: style_mod.BoxShadow) *Self { 
+        self.style.box_shadow = shadow_def; 
+        return self; 
+    }
+    
+    /// Small shadow (matches Tailwind's shadow-sm)
+    pub fn shadow_sm(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.05),
+            .blur_radius = 2,
+            .spread_radius = 0,
+            .offset = .{ .x = 0, .y = 1 },
+        }; 
+        return self; 
+    }
+    
+    /// Default shadow (matches Tailwind's shadow)
+    pub fn shadow_default(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.1),
+            .blur_radius = 6,
+            .spread_radius = 0,
+            .offset = .{ .x = 0, .y = 2 },
+        }; 
+        return self; 
+    }
+    
+    /// Medium shadow (matches Tailwind's shadow-md)
+    pub fn shadow_md(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.1),
+            .blur_radius = 10,
+            .spread_radius = -2,
+            .offset = .{ .x = 0, .y = 4 },
+        }; 
+        return self; 
+    }
+    
+    /// Large shadow (matches Tailwind's shadow-lg / GPUI's shadow_lg)
+    pub fn shadow_lg(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.15),
+            .blur_radius = 20,
+            .spread_radius = -4,
+            .offset = .{ .x = 0, .y = 8 },
+        }; 
+        return self; 
+    }
+    
+    /// Extra large shadow (matches Tailwind's shadow-xl)
+    pub fn shadow_xl(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.2),
+            .blur_radius = 30,
+            .spread_radius = -6,
+            .offset = .{ .x = 0, .y = 12 },
+        }; 
+        return self; 
+    }
+    
+    /// 2XL shadow (matches Tailwind's shadow-2xl)
+    pub fn shadow_2xl(self: *Self) *Self { 
+        self.style.box_shadow = .{
+            .color = color_mod.black().withAlpha(0.25),
+            .blur_radius = 50,
+            .spread_radius = -12,
+            .offset = .{ .x = 0, .y = 25 },
+        }; 
+        return self; 
+    }
+    
+    /// No shadow
+    pub fn shadow_none(self: *Self) *Self { 
+        self.style.box_shadow = null; 
+        return self; 
+    }
+
+    // ========================================================================
     // Border
     // ========================================================================
 
@@ -287,7 +402,7 @@ pub const Div = struct {
     // ========================================================================
 
     pub fn text_color(self: *Self, color: Hsla) *Self { self.text_color_val = color; return self; }
-    pub fn text_size(self: *Self, size: Px) *Self { self.text_size_val = size.value; return self; }
+    pub fn text_size(self: *Self, sz: Px) *Self { self.text_size_val = sz.value; return self; }
     pub fn text_xs(self: *Self) *Self { self.text_size_val = 12; return self; }
     pub fn text_sm(self: *Self) *Self { self.text_size_val = 14; return self; }
     pub fn text_base(self: *Self) *Self { self.text_size_val = 16; return self; }
@@ -358,7 +473,19 @@ pub const Div = struct {
     // Children
     // ========================================================================
 
+    /// Add a div as a child
     pub fn child(self: *Self, c: *Div) *Self {
+        // Inherit text styles from parent if child uses defaults
+        const default_text_color = color_mod.rgb(0xe2e8f0);
+        if (c.text_color_val.h == default_text_color.h and 
+            c.text_color_val.s == default_text_color.s and 
+            c.text_color_val.l == default_text_color.l) {
+            c.text_color_val = self.text_color_val;
+        }
+        if (c.text_size_val == 14) {
+            c.text_size_val = self.text_size_val;
+        }
+        
         if (self.child_count < MAX_CHILDREN) {
             self.children[self.child_count] = c;
             self.child_count += 1;
@@ -377,8 +504,12 @@ pub const Div = struct {
     // ========================================================================
 
     pub fn build(self: *Self, tree: *zaffy.Zaffy, rem_size: Pixels) !void {
+        try self.buildWithTextSystem(tree, rem_size, null);
+    }
+
+    pub fn buildWithTextSystem(self: *Self, tree: *zaffy.Zaffy, rem_size: Pixels, text_system: ?*TextSystem) !void {
         for (self.children[0..self.child_count]) |maybe_child| {
-            if (maybe_child) |c| try c.build(tree, rem_size);
+            if (maybe_child) |c| try c.buildWithTextSystem(tree, rem_size, text_system);
         }
         
         var child_ids: [MAX_CHILDREN]zaffy.NodeId = undefined;
@@ -392,7 +523,27 @@ pub const Div = struct {
             }
         }
         
-        const ts = self.style.toZaffy(rem_size);
+        var ts = self.style.toZaffy(rem_size);
+        
+        // If this div has text content and no explicit size, measure the text
+        // to give it an intrinsic size (like GPUI does)
+        if (self.text_content_val) |text| {
+            if (text_system) |tsys| {
+                const font_id: text_system_mod.FontId = 0;
+                const text_width = tsys.measureText(text, font_id, self.text_size_val);
+                const metrics = tsys.getFontMetrics(font_id, self.text_size_val);
+                const text_height = metrics.ascent - metrics.descent;
+                
+                // Only set size if not already explicitly set
+                if (ts.size.width == .auto) {
+                    ts.size.width = .{ .length = text_width };
+                }
+                if (ts.size.height == .auto) {
+                    ts.size.height = .{ .length = text_height };
+                }
+            }
+        }
+        
         self.node_id = if (count == 0)
             try tree.newLeaf(ts)
         else
@@ -441,6 +592,16 @@ pub const Div = struct {
             if (self.hover_text_color_val) |hover_tc| {
                 effective_text_color = hover_tc;
             }
+        }
+
+        // Render shadow first (behind the quad)
+        if (effective_style.box_shadow) |box_shadow| {
+            scene.insertShadow(.{
+                .bounds = bounds,
+                .color = box_shadow.color,
+                .blur_radius = box_shadow.blur_radius,
+                .corner_radii = self.style.corner_radii,
+            }) catch {};
         }
 
         if (effective_style.background != null or effective_style.border_color != null) {

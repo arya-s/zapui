@@ -119,6 +119,32 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the playground");
     run_step.dependOn(&run_playground.step);
 
+    // Hello World example (GPUI port)
+    const hello_world_mod = b.createModule(.{
+        .root_source_file = b.path("playground/hello_world.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_world_mod.addImport("zapui", zapui_mod);
+
+    const hello_world = b.addExecutable(.{
+        .name = "hello_world",
+        .root_module = hello_world_mod,
+    });
+
+    hello_world.linkSystemLibrary("GL");
+    hello_world.linkSystemLibrary("glfw");
+    hello_world.linkLibC();
+    hello_world.linkLibrary(freetype_dep.artifact("freetype"));
+    hello_world.linkLibrary(hb_lib);
+
+    b.installArtifact(hello_world);
+
+    const run_hello_world = b.addRunArtifact(hello_world);
+    run_hello_world.step.dependOn(b.getInstallStep());
+    const hello_world_step = b.step("hello-world", "Run the Hello World example (GPUI port)");
+    hello_world_step.dependOn(&run_hello_world.step);
+
     // Zaffy demo
     const zaffy_demo_mod = b.createModule(.{
         .root_source_file = b.path("examples/zaffy_demo.zig"),
