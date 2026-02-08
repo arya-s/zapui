@@ -325,12 +325,10 @@ def generate_zig_skeleton(name: str, rust_code: str, analysis: dict) -> str:
 
 const std = @import("std");
 const zapui = @import("zapui");
-const freetype = @import("freetype");
 
-const d3d11 = zapui.renderer.d3d11_renderer.d3d11;
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
+const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
 const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
-const SpriteInstance = zapui.renderer.d3d11_renderer.SpriteInstance;
 const Win32 = zapui.platform.Win32Backend;
 
 // Colors
@@ -351,7 +349,7 @@ fn rgb(hex: u24) [4]f32 {{
 const {class_name} = struct {{
     // TODO: Add state fields from Rust struct
 
-    fn render(self: *{class_name}, renderer: *D3D11Renderer, text_renderer: anytype) void {{
+    fn render(self: *{class_name}, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {{
         _ = self;
         _ = text_renderer;
         
@@ -387,120 +385,10 @@ fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {{
 }}
 
 // ============================================================================
-// Text Rendering (GPUI handles this internally)
-// ============================================================================
-
-const TextRenderer = struct {{
-    srv: *d3d11.ID3D11ShaderResourceView,
-    glyphs: [128]Glyph,
-    atlas_size: f32,
-
-    const Glyph = struct {{ x: u32, y: u32, w: u32, h: u32, bx: i32, by: i32, adv: i32 }};
-
-    fn init(alloc: std.mem.Allocator, renderer: *D3D11Renderer) !TextRenderer {{
-        const ft = try freetype.Library.init();
-        defer ft.deinit();
-        const face = try ft.initMemoryFace(@embedFile("LiberationSans-Regular.ttf"), 0);
-        defer face.deinit();
-        try face.setPixelSizes(0, 20);
-
-        const size: u32 = 512;
-        var data = try alloc.alloc(u8, size * size);
-        defer alloc.free(data);
-        @memset(data, 0);
-
-        var glyphs = [_]Glyph{{.{{ .x = 0, .y = 0, .w = 0, .h = 0, .bx = 0, .by = 0, .adv = 0 }}}} ** 128;
-        var px: u32 = 2;
-        const py: u32 = 2;
-        for (32..127) |c| {{
-            const idx = face.getCharIndex(@intCast(c)) orelse continue;
-            face.loadGlyph(idx, .{{ .render = true }}) catch continue;
-            const g = face.handle.*.glyph;
-            const bmp = &g.*.bitmap;
-            if (bmp.width > 0 and bmp.rows > 0) {{
-                const src: [*]const u8 = @ptrCast(bmp.buffer);
-                const pitch: u32 = @intCast(if (bmp.pitch < 0) -bmp.pitch else bmp.pitch);
-                for (0..bmp.rows) |row| {{
-                    for (0..bmp.width) |col| {{
-                        data[(py + row) * size + px + col] = src[row * pitch + col];
-                    }}
-                }}
-                glyphs[c] = .{{
-                    .x = px,
-                    .y = py,
-                    .w = bmp.width,
-                    .h = bmp.rows,
-                    .bx = g.*.bitmap_left,
-                    .by = g.*.bitmap_top,
-                    .adv = @intCast(g.*.advance.x >> 6),
-                }};
-                px += bmp.width + 2;
-            }} else {{
-                glyphs[c] = .{{ .x = 0, .y = 0, .w = 0, .h = 0, .bx = 0, .by = 0, .adv = @intCast(g.*.advance.x >> 6) }};
-            }}
-        }}
-
-        var desc = std.mem.zeroes(d3d11.D3D11_TEXTURE2D_DESC);
-        desc.Width = size;
-        desc.Height = size;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = .R8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.Usage = .DEFAULT;
-        desc.BindFlags = .{{ .SHADER_RESOURCE = 1 }};
-        var sub = std.mem.zeroes(d3d11.D3D11_SUBRESOURCE_DATA);
-        sub.pSysMem = data.ptr;
-        sub.SysMemPitch = size;
-        var tex: ?*d3d11.ID3D11Texture2D = null;
-        _ = renderer.device.vtable.CreateTexture2D(renderer.device, &desc, &sub, @ptrCast(&tex));
-        var srv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
-        srv_desc.Format = .R8_UNORM;
-        srv_desc.ViewDimension = ._SRV_DIMENSION_TEXTURE2D;
-        srv_desc.Anonymous.Texture2D.MipLevels = 1;
-        var srv: ?*d3d11.ID3D11ShaderResourceView = null;
-        _ = renderer.device.vtable.CreateShaderResourceView(renderer.device, @ptrCast(tex), &srv_desc, @ptrCast(&srv));
-
-        return .{{ .srv = srv.?, .glyphs = glyphs, .atlas_size = @floatFromInt(size) }};
-    }}
-
-    fn draw(self: *TextRenderer, renderer: *D3D11Renderer, str: []const u8, cx: f32, baseline: f32, color: [4]f32) void {{
-        var w: f32 = 0;
-        for (str) |c| {{
-            if (c < 128) w += @floatFromInt(self.glyphs[c].adv);
-        }}
-
-        var sprites: [64]SpriteInstance = undefined;
-        var n: usize = 0;
-        var x = cx - w / 2;
-        for (str) |c| {{
-            if (c >= 128) continue;
-            const g = self.glyphs[c];
-            if (g.w > 0) {{
-                const gw: f32 = @floatFromInt(g.w);
-                const gh: f32 = @floatFromInt(g.h);
-                sprites[n] = .{{
-                    .bounds = .{{ x + @as(f32, @floatFromInt(g.bx)), baseline - @as(f32, @floatFromInt(g.by)), gw, gh }},
-                    .uv_bounds = .{{
-                        @as(f32, @floatFromInt(g.x)) / self.atlas_size,
-                        @as(f32, @floatFromInt(g.y)) / self.atlas_size,
-                        gw / self.atlas_size,
-                        gh / self.atlas_size,
-                    }},
-                    .color = color,
-                    .content_mask = .{{ 0, 0, 0, 0 }},
-                }};
-                n += 1;
-            }}
-            x += @floatFromInt(g.adv);
-        }}
-        if (n > 0) renderer.drawSprites(sprites[0..n], self.srv, true);
-    }}
-}};
-
-// ============================================================================
 // Main
 // ============================================================================
+
+const font_data = @embedFile("LiberationSans-Regular.ttf");
 
 pub fn main() !void {{
     var platform = try Win32.init();
@@ -516,7 +404,8 @@ pub fn main() !void {{
     var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, {width}, {height});
     defer renderer.deinit();
 
-    var text_renderer = try TextRenderer.init(std.heap.page_allocator, &renderer);
+    var text_renderer = try D3D11TextRenderer.init(std.heap.page_allocator, &renderer, font_data, 20);
+    defer text_renderer.deinit();
 
     var state = {class_name}{{}};
 
