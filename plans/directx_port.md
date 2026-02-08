@@ -58,9 +58,10 @@ src/
 - [x] Add D3D11 API bindings (via zigwin32)
 - [x] D3D11 device, swap chain, render target view
 - [x] Clear screen, present, resize
-- [ ] Port shaders to HLSL
+- [x] Port shaders to HLSL (quad.hlsl with SDF rounded corners, dashed borders)
+- [x] Implement quad rendering with StructuredBuffer instancing
+- [x] Blend state and rasterizer state for alpha blending
 - [ ] Implement texture atlas on D3D11
-- [ ] Implement quad rendering
 - [ ] Implement text rendering
 
 ## Phase 5: Integration & Testing
