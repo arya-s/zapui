@@ -65,11 +65,11 @@ This creates:
 
 ```
 examples/gpui_ports/<name>/
-├── <name>.zig           # Main ZapUI implementation (OpenGL)
-├── <name>_win32.zig     # Optional: Win32+D3D11 version
+├── <name>_win32.zig     # Main implementation (Win32 + D3D11) - DEFAULT
+├── <name>.zig           # Optional: OpenGL version (cross-platform)
 ├── <name>.rs            # Original GPUI source (reference)
 ├── REPORT.md            # Comparison report
-├── LiberationSans-Regular.ttf  # Font (if needed for D3D11)
+├── LiberationSans-Regular.ttf  # Embedded font for D3D11
 └── screenshots/
     ├── zapui.png        # ZapUI screenshot
     ├── gpui.png         # GPUI screenshot
@@ -77,14 +77,16 @@ examples/gpui_ports/<name>/
     └── toggle.gif       # Animated comparison
 ```
 
-## D3D11/Win32 Version (Optional)
+## Default: Win32 + D3D11
 
-For native Windows without GLFW/OpenGL:
-1. Create `<name>_win32.zig` alongside the main file
-2. Use `zapui.platform.Win32Backend` for windowing
-3. Use `zapui.renderer.d3d11_renderer.D3D11Renderer` for rendering
-4. Embed fonts with `@embedFile("LiberationSans-Regular.ttf")`
-5. Copy font file to the example directory
+GPUI ports use native Win32 windowing and D3D11 rendering by default:
+- `hello_world.exe` = Win32 + D3D11 (built from `hello_world_win32.zig`)
+- `hello_world_gl.exe` = OpenGL version (built from `hello_world.zig`)
+
+The Win32+D3D11 version:
+- Uses `zapui.platform.Win32Backend` for windowing
+- Uses `zapui.renderer.d3d11_renderer.D3D11Renderer` for rendering
+- Embeds fonts with `@embedFile("LiberationSans-Regular.ttf")`
 
 ## Prerequisites
 
@@ -104,4 +106,5 @@ For native Windows without GLFW/OpenGL:
 | `make capture-gpui EXAMPLE=<name>` | Capture GPUI screenshot |
 | `make capture-both EXAMPLE=<name>` | Capture both screenshots |
 | `make compare EXAMPLE=<name>` | Generate diff and toggle images |
-| `make hello-world` | Run hello_world example |
+| `make hello-world` | Build hello_world (Win32 + D3D11) |
+| `make hello-world-gl` | Build hello_world (OpenGL) |
