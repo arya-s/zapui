@@ -1,4 +1,4 @@
-//! ZapUI Playground - GPUI-compatible Div API Demo
+//! ZapUI Playground - Component Showcase
 
 const std = @import("std");
 const zapui = @import("zapui");
@@ -23,23 +23,36 @@ const px = zapui.elements.div.px;
 const glfw = @cImport({ @cInclude("GLFW/glfw3.h"); });
 
 // ============================================================================
-// Colors
+// Colors - Modern dark theme
 // ============================================================================
 
 const C = struct {
+    // Backgrounds
     const bg_dark = zapui.rgb(0x0f1419);
     const bg_card = zapui.rgb(0x1a1f26);
     const bg_elevated = zapui.rgb(0x2d3748);
     const bg_hover = zapui.rgb(0x3d4a5c);
+    const bg_input = zapui.rgb(0x1e2530);
+    
+    // Accent colors
     const primary = zapui.rgb(0x4299e1);
+    const secondary = zapui.rgb(0x667eea);
     const success = zapui.rgb(0x48bb78);
     const danger = zapui.rgb(0xf56565);
     const warning = zapui.rgb(0xed8936);
     const purple = zapui.rgb(0x9f7aea);
+    const pink = zapui.rgb(0xed64a6);
+    const cyan = zapui.rgb(0x38b2ac);
+    
+    // Text
     const white = zapui.rgb(0xffffff);
     const text_primary = zapui.rgb(0xe2e8f0);
+    const text_secondary = zapui.rgb(0xa0aec0);
     const text_muted = zapui.rgb(0x718096);
+    
+    // Borders
     const border = zapui.rgb(0x4a5568);
+    const border_light = zapui.rgb(0x2d3748);
 };
 
 // ============================================================================
@@ -49,20 +62,36 @@ const C = struct {
 var g_mouse_pos: Point(Pixels) = .{ .x = 0, .y = 0 };
 var g_mouse_down: bool = false;
 var g_slider_value: f32 = 0.65;
-var g_checkbox_checked: bool = true;
-var g_toggle_on: bool = true;
+var g_slider2_value: f32 = 0.35;
+var g_checkbox1_checked: bool = true;
+var g_checkbox2_checked: bool = false;
+var g_checkbox3_checked: bool = true;
+var g_toggle1_on: bool = true;
+var g_toggle2_on: bool = false;
+var g_selected_tab: usize = 0;
 
 // Hit testing
 const Hitbox = struct { bounds: Bounds(Pixels), id: usize };
-var g_hitboxes: [64]Hitbox = undefined;
+var g_hitboxes: [128]Hitbox = undefined;
 var g_hitbox_count: usize = 0;
 
-const ID_SLIDER = 1;
-const ID_CHECKBOX = 2;
-const ID_TOGGLE = 3;
-const ID_BTN_PRIMARY = 10;
-const ID_BTN_SUCCESS = 11;
-const ID_BTN_DANGER = 12;
+// Component IDs
+const ID_SLIDER1 = 1;
+const ID_SLIDER2 = 2;
+const ID_CHECKBOX1 = 10;
+const ID_CHECKBOX2 = 11;
+const ID_CHECKBOX3 = 12;
+const ID_TOGGLE1 = 20;
+const ID_TOGGLE2 = 21;
+const ID_TAB1 = 30;
+const ID_TAB2 = 31;
+const ID_TAB3 = 32;
+const ID_BTN_PRIMARY = 40;
+const ID_BTN_SECONDARY = 41;
+const ID_BTN_SUCCESS = 42;
+const ID_BTN_DANGER = 43;
+const ID_BTN_OUTLINE = 44;
+const ID_BTN_GHOST = 45;
 
 fn resetHitboxes() void { g_hitbox_count = 0; }
 
@@ -84,26 +113,59 @@ fn isHovered(id: usize) bool {
 }
 
 // ============================================================================
-// Components (GPUI-style)
+// Components
 // ============================================================================
 
-fn button(label: []const u8, color: Hsla, id: usize) *Div {
+fn solidButton(label: []const u8, color: Hsla, id: usize) *Div {
+    const hovered = isHovered(id);
+    const bg = if (hovered) color.lighten(0.1) else color;
     return div()
-        .w(px(100)).h(px(40))
-        .bg(color)
-        .hover_bg(color.lighten(0.1))
-        .rounded(px(8))
+        .w(px(110)).h(px(38))
+        .bg(bg)
+        .rounded(px(6))
         .id(id)
         .justify_center().items_center()
         .child_text(label)
-        .text_color(C.white);
+        .text_color(C.white)
+        .text_sm();
+}
+
+fn outlineButton(label: []const u8, color: Hsla, id: usize) *Div {
+    const hovered = isHovered(id);
+    const bg = if (hovered) color.withAlpha(0.15) else zapui.Hsla.transparent;
+    return div()
+        .w(px(110)).h(px(38))
+        .bg(bg)
+        .border_1().border_color(color)
+        .rounded(px(6))
+        .id(id)
+        .justify_center().items_center()
+        .child_text(label)
+        .text_color(color)
+        .text_sm();
+}
+
+fn ghostButton(label: []const u8, color: Hsla, id: usize) *Div {
+    const hovered = isHovered(id);
+    const bg = if (hovered) color.withAlpha(0.15) else zapui.Hsla.transparent;
+    const border_c = if (hovered) color.withAlpha(0.3) else color.withAlpha(0.15);
+    return div()
+        .w(px(110)).h(px(38))
+        .bg(bg)
+        .border_1().border_color(border_c)
+        .rounded(px(6))
+        .id(id)
+        .justify_center().items_center()
+        .child_text(label)
+        .text_color(color)
+        .text_sm();
 }
 
 fn checkbox(label: []const u8, checked: bool, id: usize) *Div {
-    const box_color = if (checked) C.primary else C.bg_elevated;
-    const bord_color = if (checked) C.primary else C.border;
+    const hovered = isHovered(id);
+    const box_bg = if (checked) C.primary else if (hovered) C.bg_hover else C.bg_elevated;
+    const border_c = if (checked) C.primary else C.border;
     
-    // Using .when() to conditionally add the checkmark
     const addCheckmark = struct {
         fn f(d: *Div) *Div {
             return d.child(div().w(px(10)).h(px(10)).bg(C.white).rounded(px(2)));
@@ -112,76 +174,145 @@ fn checkbox(label: []const u8, checked: bool, id: usize) *Div {
     
     const box = div()
         .w(px(20)).h(px(20))
-        .bg(box_color)
-        .hover_bg(if (checked) C.primary else C.bg_hover)  // hover style!
+        .bg(box_bg)
         .rounded(px(4))
-        .border_2().border_color(bord_color)
+        .border_1().border_color(border_c)
         .justify_center().items_center()
         .id(id)
         .when(checked, addCheckmark);
     
-    const lbl = div().h(px(20)).px(px(8)).child_text(label).text_sm().text_color(C.text_primary);
+    const lbl = div().child_text(label).text_sm().text_color(C.text_primary);
     
     return h_flex().gap(px(10)).items_center().child(box).child(lbl);
 }
 
-fn toggle(enabled: bool, id: usize) *Div {
-    const track_color = if (enabled) C.primary else C.bg_elevated;
-    const knob_x: Pixels = if (enabled) 26 else 4;
+fn toggle(label: []const u8, enabled: bool, id: usize) *Div {
+    const hovered = isHovered(id);
+    const track_color = if (enabled) C.primary else if (hovered) C.bg_hover else C.bg_elevated;
+    const knob_x: Pixels = if (enabled) 22 else 2;
     
     const track = div()
-        .w(px(48)).h(px(26))
+        .w(px(44)).h(px(24))
         .bg(track_color)
-        .hover_bg(if (enabled) C.primary.lighten(0.1) else C.bg_hover)  // hover style!
         .rounded_full()
         .id(id);
-    const knob = div().w(px(18)).h(px(18)).bg(C.white).rounded_full().absolute().left(px(knob_x)).top(px(4));
+    const knob = div().w(px(20)).h(px(20)).bg(C.white).rounded_full()
+        .absolute().left(px(knob_x)).top(px(2));
     
-    return track.child(knob);
+    const lbl = div().child_text(label).text_sm().text_color(C.text_primary);
+    
+    return h_flex().gap(px(12)).items_center().child(track.child(knob)).child(lbl);
 }
 
-fn slider(value: f32, id: usize) *Div {
-    const track_w: Pixels = 200;
-    const knob_size: Pixels = 20;
+fn slider(value: f32, color: Hsla, id: usize) *Div {
+    const track_w: Pixels = 180;
+    const knob_size: Pixels = 18;
+    const track_h: Pixels = 6;
     const container_h: Pixels = 24;
-    const track_h: Pixels = 8;
     
     const filled_w = track_w * value;
     const knob_x = track_w * value - knob_size / 2;
-    const knob_y = (container_h - knob_size) / 2;
     const track_y = (container_h - track_h) / 2;
+    const knob_y = (container_h - knob_size) / 2;
     
-    const track_bg = div().w(px(track_w)).h(px(track_h)).bg(C.bg_elevated).rounded(px(4))
+    const track_bg = div().w(px(track_w)).h(px(track_h)).bg(C.bg_elevated).rounded(px(3))
         .absolute().top(px(track_y));
-    const filled = div().w(px(filled_w)).h(px(track_h)).bg(C.primary).rounded(px(4))
+    const filled = div().w(px(filled_w)).h(px(track_h)).bg(color).rounded(px(3))
         .absolute().top(px(track_y));
-    const knob = div().w(px(knob_size)).h(px(knob_size)).bg(C.primary).rounded_full()
-        .border_3().border_color(C.white)
+    const knob = div().w(px(knob_size)).h(px(knob_size)).bg(color).rounded_full()
+        .border_2().border_color(C.white)
         .absolute().left(px(@max(0, knob_x))).top(px(knob_y));
     
     return div().w(px(track_w)).h(px(container_h)).id(id)
         .child(track_bg).child(filled).child(knob);
 }
 
-fn progressBar(value: f32, color: Hsla) *Div {
+fn progressBar(value: f32, color: Hsla, label: []const u8) *Div {
     const bar_w: Pixels = 200;
     const filled_w = bar_w * std.math.clamp(value, 0, 1);
     
-    const track = div().w(px(bar_w)).h(px(10)).bg(C.bg_elevated).rounded(px(5));
-    const filled = div().w(px(filled_w)).h(px(10)).bg(color).rounded(px(5)).absolute();
+    const track = div().w(px(bar_w)).h(px(8)).bg(C.bg_elevated).rounded(px(4));
+    const filled = div().w(px(filled_w)).h(px(8)).bg(color).rounded(px(4)).absolute();
     
-    return track.child(filled);
+    const lbl = div().child_text(label).text_sm().text_color(C.text_muted);
+    
+    return h_flex().gap(px(12)).items_center().child(track.child(filled)).child(lbl);
+}
+
+fn badge(text: []const u8, color: Hsla) *Div {
+    return div()
+        .px(px(10)).py(px(4))
+        .bg(color.withAlpha(0.2))
+        .rounded(px(12))
+        .child_text(text)
+        .text_xs()
+        .text_color(color);
+}
+
+fn avatar(initials: []const u8, color: Hsla, size: Pixels) *Div {
+    return div()
+        .w(px(size)).h(px(size))
+        .bg(color)
+        .rounded_full()
+        .justify_center().items_center()
+        .child_text(initials)
+        .text_color(C.white);
+}
+
+fn card() *Div {
+    return v_flex().gap(px(16))
+        .p(px(20))
+        .bg(C.bg_card)
+        .rounded(px(12))
+        .border_1().border_color(C.border_light);
+}
+
+fn tabButton(label: []const u8, selected: bool, id: usize) *Div {
+    const hovered = isHovered(id);
+    const bg = if (selected) C.primary else if (hovered) C.bg_hover else zapui.Hsla.transparent;
+    const text_c = if (selected) C.white else C.text_secondary;
+    return div()
+        .px(px(16)).h(px(36))
+        .bg(bg)
+        .rounded(px(6))
+        .justify_center().items_center()
+        .id(id)
+        .child_text(label)
+        .text_sm()
+        .text_color(text_c);
+}
+
+fn divider() *Div {
+    return div().w(px(1)).h(px(20)).bg(C.border_light);
+}
+
+fn hDivider() *Div {
+    return div().h(px(1)).bg(C.border_light);
 }
 
 fn sectionTitle(title: []const u8) *Div {
-    return div().h(px(36)).child_text(title).text_lg().text_color(C.text_primary);
+    return div().child_text(title).text_color(C.text_muted).text_xs();
+}
+
+fn inputField(placeholder: []const u8, width: Pixels) *Div {
+    return div()
+        .w(px(width)).h(px(38))
+        .bg(C.bg_input)
+        .border_1().border_color(C.border)
+        .rounded(px(6))
+        .px(px(12))
+        .items_center()
+        .child_text(placeholder)
+        .text_sm()
+        .text_color(C.text_muted);
 }
 
 // ============================================================================
 // Main UI
 // ============================================================================
 
-var g_slider_buf: [32]u8 = undefined;
+var g_slider1_buf: [32]u8 = undefined;
+var g_slider2_buf: [32]u8 = undefined;
 
 fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: Pixels, height: Pixels) !void {
     reset();
@@ -189,73 +320,173 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
     
     const rem: Pixels = 16.0;
     
-    // Header - full width with centered text
-    const header = div()
+    // Header
+    const header = h_flex()
         .w(px(width))
-        .h(px(70))
+        .h(px(60))
+        .px(px(24))
         .bg(C.bg_card)
-        .justify_center()
         .items_center()
-        .child_text("ZapUI Div API Demo")
-        .text_2xl()
-        .text_color(C.primary);
+        .justify_between()
+        .child(
+            div().child_text("ZapUI Component Showcase").text_xl().text_color(C.white)
+        )
+        .child(
+            h_flex().gap(px(12))
+                .child(badge("v0.1", C.primary))
+                .child(badge("Beta", C.warning))
+        );
     
-    // Buttons section
-    const btn_section = v_flex().gap(px(12))
-        .child(sectionTitle("Buttons"))
-        .child(h_flex().gap(px(12))
-            .child(button("Primary", C.primary, ID_BTN_PRIMARY))
-            .child(button("Success", C.success, ID_BTN_SUCCESS))
-            .child(button("Danger", C.danger, ID_BTN_DANGER)));
+    // Left sidebar - Navigation
+    const sidebar = v_flex()
+        .w(px(200))
+        .h(px(height - 60))
+        .bg(C.bg_card)
+        .p(px(16))
+        .gap(px(4))
+        .child(sectionTitle("COMPONENTS"))
+        .child(div().h(px(8)))
+        .child(tabButton("Buttons", g_selected_tab == 0, ID_TAB1))
+        .child(tabButton("Form Controls", g_selected_tab == 1, ID_TAB2))
+        .child(tabButton("Display", g_selected_tab == 2, ID_TAB3));
     
-    // Checkbox section
-    const cb_section = v_flex().gap(px(12))
-        .child(sectionTitle("Checkbox"))
-        .child(checkbox("Enable feature", g_checkbox_checked, ID_CHECKBOX));
+    // Content area based on selected tab
+    const content = switch (g_selected_tab) {
+        0 => buildButtonsTab(),
+        1 => buildFormControlsTab(),
+        2 => buildDisplayTab(),
+        else => buildButtonsTab(),
+    };
     
-    // Toggle section
-    const toggle_section = v_flex().gap(px(12))
-        .child(sectionTitle("Toggle"))
-        .child(h_flex().gap(px(12)).items_center()
-            .child(toggle(g_toggle_on, ID_TOGGLE))
-            .child(div().child_text(if (g_toggle_on) "On" else "Off").text_sm().text_color(C.text_primary)));
+    // Main content area
+    const main_content = div()
+        .flex_1()
+        .h(px(height - 60))
+        .p(px(24))
+        .bg(C.bg_dark)
+        .child(content);
     
-    // Slider section
-    const slider_text = std.fmt.bufPrint(&g_slider_buf, "{d:.0}%", .{g_slider_value * 100}) catch "0%";
-    const slider_section = v_flex().gap(px(12))
-        .child(sectionTitle("Slider"))
-        .child(h_flex().gap(px(16)).items_center()
-            .child(slider(g_slider_value, ID_SLIDER))
-            .child(div().child_text(slider_text).text_sm().text_color(C.text_muted)));
-    
-    // Progress section
-    const progress_section = v_flex().gap(px(12))
-        .child(sectionTitle("Progress"))
-        .child(v_flex().gap(px(8))
-            .child(progressBar(0.75, C.primary))
-            .child(progressBar(0.45, C.success))
-            .child(progressBar(0.25, C.warning)));
-    
-    // Content area
-    const content = v_flex().gap(px(24)).p(px(24)).flex_1()
-        .child(btn_section)
-        .child(cb_section)
-        .child(toggle_section)
-        .child(slider_section)
-        .child(progress_section);
+    // Body (sidebar + content)
+    const body = h_flex()
+        .w(px(width))
+        .child(sidebar)
+        .child(main_content);
     
     // Root
     const root = v_flex().w(px(width)).h(px(height)).bg(C.bg_dark)
-        .child(header).child(content);
+        .child(header)
+        .child(body);
     
     try root.build(tree, rem);
     tree.computeLayoutWithSize(root.node_id.?, width, height);
     root.paint(scene, text_system, 0, 0, tree, addHitbox, isHovered);
 
-    // Test emoji rendering (font_id 1 = emoji font)
+    // Emoji decoration
     if (text_system.fonts.items.len > 1) {
-        text_system.renderTextWithFont(scene, "🎉🚀✨", width - 120, 50, 24, C.white, 1) catch {};
+        text_system.renderTextWithFont(scene, "🎨", width - 50, 18, 24, C.white, 1) catch {};
     }
+}
+
+fn buildButtonsTab() *Div {
+    return v_flex().gap(px(20))
+        .child(
+            card()
+                .child(div().child_text("Solid Buttons").text_color(C.text_primary))
+                .child(h_flex().gap(px(12))
+                    .child(solidButton("Primary", C.primary, ID_BTN_PRIMARY))
+                    .child(solidButton("Secondary", C.secondary, ID_BTN_SECONDARY))
+                    .child(solidButton("Success", C.success, ID_BTN_SUCCESS))
+                    .child(solidButton("Danger", C.danger, ID_BTN_DANGER)))
+        )
+        .child(
+            card()
+                .child(div().child_text("Outline Buttons").text_color(C.text_primary))
+                .child(h_flex().gap(px(12))
+                    .child(outlineButton("Primary", C.primary, ID_BTN_OUTLINE))
+                    .child(outlineButton("Success", C.success, ID_BTN_OUTLINE + 1))
+                    .child(outlineButton("Danger", C.danger, ID_BTN_OUTLINE + 2)))
+        )
+        .child(
+            card()
+                .child(div().child_text("Ghost Buttons").text_color(C.text_primary))
+                .child(h_flex().gap(px(12))
+                    .child(ghostButton("Primary", C.primary, ID_BTN_GHOST))
+                    .child(ghostButton("Secondary", C.secondary, ID_BTN_GHOST + 1)))
+        );
+}
+
+fn buildFormControlsTab() *Div {
+    const slider1_text = std.fmt.bufPrint(&g_slider1_buf, "{d:.0}%", .{g_slider_value * 100}) catch "0%";
+    const slider2_text = std.fmt.bufPrint(&g_slider2_buf, "{d:.0}%", .{g_slider2_value * 100}) catch "0%";
+    
+    return v_flex().gap(px(20))
+        .child(
+            h_flex().gap(px(20))
+                .child(
+                    card().w(px(280))
+                        .child(div().child_text("Checkboxes").text_color(C.text_primary))
+                        .child(v_flex().gap(px(14))
+                            .child(checkbox("Enable notifications", g_checkbox1_checked, ID_CHECKBOX1))
+                            .child(checkbox("Auto-save drafts", g_checkbox2_checked, ID_CHECKBOX2))
+                            .child(checkbox("Dark mode", g_checkbox3_checked, ID_CHECKBOX3)))
+                )
+                .child(
+                    card().w(px(280))
+                        .child(div().child_text("Toggle Switches").text_color(C.text_primary))
+                        .child(v_flex().gap(px(14))
+                            .child(toggle("Push notifications", g_toggle1_on, ID_TOGGLE1))
+                            .child(toggle("Email updates", g_toggle2_on, ID_TOGGLE2)))
+                )
+        )
+        .child(
+            card()
+                .child(div().child_text("Sliders").text_color(C.text_primary))
+                .child(v_flex().gap(px(16))
+                    .child(h_flex().gap(px(16)).items_center()
+                        .child(slider(g_slider_value, C.primary, ID_SLIDER1))
+                        .child(div().w(px(50)).child_text(slider1_text).text_sm().text_color(C.text_muted)))
+                    .child(h_flex().gap(px(16)).items_center()
+                        .child(slider(g_slider2_value, C.success, ID_SLIDER2))
+                        .child(div().w(px(50)).child_text(slider2_text).text_sm().text_color(C.text_muted))))
+        )
+        .child(
+            card()
+                .child(div().child_text("Text Inputs (display only)").text_color(C.text_primary))
+                .child(v_flex().gap(px(12))
+                    .child(inputField("Enter your name...", 300))
+                    .child(inputField("Email address...", 300)))
+        );
+}
+
+fn buildDisplayTab() *Div {
+    return v_flex().gap(px(20))
+        .child(
+            card()
+                .child(div().child_text("Badges").text_color(C.text_primary))
+                .child(h_flex().gap(px(10))
+                    .child(badge("New", C.primary))
+                    .child(badge("Sale", C.success))
+                    .child(badge("Hot", C.danger))
+                    .child(badge("Soon", C.warning)))
+        )
+        .child(
+            card()
+                .child(div().child_text("Avatars").text_color(C.text_primary))
+                .child(h_flex().gap(px(16)).items_center()
+                    .child(avatar("JD", C.primary, 32))
+                    .child(avatar("AB", C.success, 40))
+                    .child(avatar("XY", C.purple, 48))
+                    .child(avatar("MN", C.danger, 56)))
+        )
+        .child(
+            card()
+                .child(div().child_text("Progress Bars").text_color(C.text_primary))
+                .child(v_flex().gap(px(12))
+                    .child(progressBar(0.85, C.primary, "85%"))
+                    .child(progressBar(0.60, C.success, "60%"))
+                    .child(progressBar(0.35, C.warning, "35%"))
+                    .child(progressBar(0.15, C.danger, "15%")))
+        );
 }
 
 // ============================================================================
@@ -265,8 +496,14 @@ fn buildUI(tree: *taffy.Taffy, scene: *Scene, text_system: *TextSystem, width: P
 fn handleClick() void {
     if (hitTest(g_mouse_pos)) |id| {
         switch (id) {
-            ID_CHECKBOX => g_checkbox_checked = !g_checkbox_checked,
-            ID_TOGGLE => g_toggle_on = !g_toggle_on,
+            ID_CHECKBOX1 => g_checkbox1_checked = !g_checkbox1_checked,
+            ID_CHECKBOX2 => g_checkbox2_checked = !g_checkbox2_checked,
+            ID_CHECKBOX3 => g_checkbox3_checked = !g_checkbox3_checked,
+            ID_TOGGLE1 => g_toggle1_on = !g_toggle1_on,
+            ID_TOGGLE2 => g_toggle2_on = !g_toggle2_on,
+            ID_TAB1 => g_selected_tab = 0,
+            ID_TAB2 => g_selected_tab = 1,
+            ID_TAB3 => g_selected_tab = 2,
             else => {},
         }
     }
@@ -275,24 +512,14 @@ fn handleClick() void {
 fn handleSliderDrag() void {
     if (g_mouse_down) {
         for (g_hitboxes[0..g_hitbox_count]) |hb| {
-            if (hb.id == ID_SLIDER and hb.bounds.contains(g_mouse_pos)) {
+            if (hb.id == ID_SLIDER1 and hb.bounds.contains(g_mouse_pos)) {
                 g_slider_value = std.math.clamp((g_mouse_pos.x - hb.bounds.origin.x) / hb.bounds.size.width, 0, 1);
-                break;
+            }
+            if (hb.id == ID_SLIDER2 and hb.bounds.contains(g_mouse_pos)) {
+                g_slider2_value = std.math.clamp((g_mouse_pos.x - hb.bounds.origin.x) / hb.bounds.size.width, 0, 1);
             }
         }
     }
-}
-
-fn mouseButtonCallback(_: ?*glfw.GLFWwindow, btn: c_int, action: c_int, _: c_int) callconv(.c) void {
-    if (btn == glfw.GLFW_MOUSE_BUTTON_LEFT) {
-        if (action == glfw.GLFW_PRESS) { g_mouse_down = true; handleSliderDrag(); }
-        else if (action == glfw.GLFW_RELEASE) { g_mouse_down = false; handleClick(); }
-    }
-}
-
-fn cursorPosCallback(_: ?*glfw.GLFWwindow, xpos: f64, ypos: f64) callconv(.c) void {
-    g_mouse_pos = .{ .x = @floatCast(xpos), .y = @floatCast(ypos) };
-    handleSliderDrag();
 }
 
 // ============================================================================
@@ -306,21 +533,39 @@ pub fn main() !void {
     glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfw.glfwWindowHint(glfw.GLFW_CONTEXT_VERSION_MINOR, 3);
     glfw.glfwWindowHint(glfw.GLFW_OPENGL_PROFILE, glfw.GLFW_OPENGL_CORE_PROFILE);
-    glfw.glfwWindowHint(glfw.GLFW_OPENGL_FORWARD_COMPAT, 1);
 
-    const win = glfw.glfwCreateWindow(800, 600, "ZapUI - Div API Demo", null, null) orelse return;
+    const win = glfw.glfwCreateWindow(900, 650, "ZapUI Playground", null, null) orelse return;
     defer glfw.glfwDestroyWindow(win);
-
     glfw.glfwMakeContextCurrent(win);
     glfw.glfwSwapInterval(1);
-    _ = glfw.glfwSetMouseButtonCallback(win, mouseButtonCallback);
-    _ = glfw.glfwSetCursorPosCallback(win, cursorPosCallback);
 
-    try zapui.loadGl(struct {
-        pub fn getProcAddress(name: [*:0]const u8) ?*anyopaque {
-            return @ptrCast(@constCast(glfw.glfwGetProcAddress(name)));
+    _ = glfw.glfwSetCursorPosCallback(win, struct {
+        fn cb(_: ?*glfw.GLFWwindow, x: f64, y: f64) callconv(.c) void {
+            g_mouse_pos = .{ .x = @floatCast(x), .y = @floatCast(y) };
+            handleSliderDrag();
         }
-    }.getProcAddress);
+    }.cb);
+
+    _ = glfw.glfwSetMouseButtonCallback(win, struct {
+        fn cb(_: ?*glfw.GLFWwindow, button: c_int, action: c_int, _: c_int) callconv(.c) void {
+            if (button == glfw.GLFW_MOUSE_BUTTON_LEFT) {
+                if (action == glfw.GLFW_PRESS) { g_mouse_down = true; handleClick(); }
+                else if (action == glfw.GLFW_RELEASE) { g_mouse_down = false; }
+            }
+        }
+    }.cb);
+
+    // Load OpenGL functions
+    const getProcWrapper = struct {
+        fn get(name: [*:0]const u8) ?*anyopaque {
+            const ptr = glfw.glfwGetProcAddress(name);
+            return @ptrCast(@constCast(ptr));
+        }
+    }.get;
+    zapui.renderer.gl.loadGlFunctions(getProcWrapper) catch {
+        std.debug.print("Failed to load OpenGL functions\n", .{});
+        return;
+    };
 
     const allocator = std.heap.page_allocator;
     var renderer = try GlRenderer.init(allocator);
@@ -349,18 +594,20 @@ pub fn main() !void {
         glfw.glfwGetFramebufferSize(win, &ww, &wh);
         const width: Pixels = @floatFromInt(ww);
         const height: Pixels = @floatFromInt(wh);
-        
+
         renderer.setViewport(width, height, 1.0);
+        renderer.clear(C.bg_dark);
+
+        var scene = Scene.init(allocator);
+        defer scene.deinit();
 
         var tree = taffy.Taffy.init(allocator);
         defer tree.deinit();
-        var scene = Scene.init(allocator);
-        defer scene.deinit();
-        
-        try buildUI(&tree, &scene, &text_system, width, height);
 
-        renderer.clear(C.bg_dark);
-        try renderer.drawScene(&scene);
+        buildUI(&tree, &scene, &text_system, width, height) catch {};
+
+        renderer.drawScene(&scene) catch {};
+
         glfw.glfwSwapBuffers(win);
     }
 }
