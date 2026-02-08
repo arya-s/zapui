@@ -9,11 +9,10 @@ examples/gpui_ports/
 ├── hello_world/
 │   ├── hello_world.zig    # ZapUI port
 │   ├── hello_world.rs     # Original GPUI source
-│   ├── REPORT.md          # Side-by-side comparison report
+│   ├── REPORT.md          # Comparison report with embedded screenshots
 │   └── screenshots/
 │       ├── zapui.png      # ZapUI screenshot
 │       ├── gpui.png       # GPUI screenshot
-│       ├── comparison.png # Side-by-side image
 │       ├── diff.png       # Pixel differences
 │       └── toggle.gif     # Animated toggle
 ├── gradient/
@@ -87,9 +86,10 @@ Creates comparison images from captured screenshots.
 ```
 
 Generates:
-- `comparison.png` - Side-by-side (GPUI | ZapUI)
 - `diff.png` - Pixel differences highlighted
 - `toggle.gif` - Animated toggle between both
+
+Also updates REPORT.md with embedded screenshot links.
 
 Requires: ImageMagick (`sudo apt install imagemagick`)
 

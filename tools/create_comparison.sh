@@ -43,14 +43,6 @@ echo ""
 if command -v convert &> /dev/null; then
     echo "Creating comparison images..."
     
-    # Side-by-side (GPUI left, ZapUI right)
-    SIDE_BY_SIDE="$SCREENSHOTS_DIR/comparison.png"
-    convert "$GPUI_IMG" "$ZAPUI_IMG" +append \
-        -background white -splice 10x0+50%+0 \
-        "$SIDE_BY_SIDE" 2>/dev/null || \
-    convert "$GPUI_IMG" "$ZAPUI_IMG" +append "$SIDE_BY_SIDE"
-    echo "✅ Created: comparison.png (side-by-side)"
-    
     # Diff image
     DIFF_IMG="$SCREENSHOTS_DIR/diff.png"
     compare "$GPUI_IMG" "$ZAPUI_IMG" "$DIFF_IMG" 2>/dev/null && \
@@ -69,12 +61,24 @@ else
     echo "   Skipping comparison image generation"
 fi
 
+# Update REPORT.md with screenshot links
+REPORT_FILE="$EXAMPLE_DIR/REPORT.md"
+if [ -f "$REPORT_FILE" ]; then
+    echo ""
+    echo "Updating REPORT.md with screenshots..."
+    
+    # Check if screenshots section already has images
+    if ! grep -q "!\[GPUI\]" "$REPORT_FILE" 2>/dev/null; then
+        # Replace the screenshots section
+        sed -i 's|## Screenshots.*|## Screenshots\n\n### GPUI (Rust)\n\n![GPUI](screenshots/gpui.png)\n\n### ZapUI (Zig)\n\n![ZapUI](screenshots/zapui.png)\n\n### Animated Toggle\n\n![Toggle](screenshots/toggle.gif)\n\n### Pixel Diff\n\n![Diff](screenshots/diff.png)|' "$REPORT_FILE" 2>/dev/null || true
+    fi
+fi
+
 echo ""
 echo "=== Results ==="
 ls -la "$SCREENSHOTS_DIR/"
 
 echo ""
-echo "View the comparison:"
-echo "  - comparison.png: Side-by-side (GPUI | ZapUI)"
+echo "View the comparison in REPORT.md or:"
 echo "  - diff.png: Pixel differences"
 echo "  - toggle.gif: Animated toggle between both"

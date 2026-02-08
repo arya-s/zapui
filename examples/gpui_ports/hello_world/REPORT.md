@@ -10,6 +10,24 @@
 | Zig LOC | ~100 |
 | Visual Match | ✅ Yes |
 
+## Screenshots
+
+### GPUI (Rust)
+
+![GPUI](screenshots/gpui.png)
+
+### ZapUI (Zig)
+
+![ZapUI](screenshots/zapui.png)
+
+### Animated Toggle
+
+![Toggle](screenshots/toggle.gif)
+
+### Pixel Diff
+
+![Diff](screenshots/diff.png)
+
 ## Translation Warnings
 
 None - this example is fully ported and working!
@@ -105,14 +123,6 @@ div()
 | `.text_color(...)` | `.text_color(...)` | ✅ Identical |
 | `.size_8()` | `.size_8()` | ✅ Identical |
 | `.child(element)` | `.child(element)` | ✅ Identical |
-
-## Screenshots
-
-| Version | Screenshot |
-|---------|------------|
-| GPUI (Rust) | `screenshots/gpui.png` |
-| ZapUI (Zig) | `screenshots/zapui.png` |
-| Comparison | `screenshots/comparison.png` |
 
 ## Build Instructions
 

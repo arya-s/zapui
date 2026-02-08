@@ -251,13 +251,23 @@ def generate_comparison_report(name: str, rust_code: str, zig_code: str, analysi
 
 ## Screenshots
 
-After running both versions, screenshots will be saved here:
+*Run `make capture-both EXAMPLE={name}` then `make compare EXAMPLE={name}` to generate screenshots.*
 
-| Version | Screenshot |
-|---------|------------|
-| GPUI (Rust) | `screenshots/gpui.png` |
-| ZapUI (Zig) | `screenshots/zapui.png` |
-| Comparison | `screenshots/comparison.png` |
+### GPUI (Rust)
+
+![GPUI](screenshots/gpui.png)
+
+### ZapUI (Zig)
+
+![ZapUI](screenshots/zapui.png)
+
+### Animated Toggle
+
+![Toggle](screenshots/toggle.gif)
+
+### Pixel Diff
+
+![Diff](screenshots/diff.png)
 
 ## Build Instructions
 
