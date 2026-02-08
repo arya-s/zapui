@@ -18,7 +18,6 @@ const Pixels = zapui.Pixels;
 
 // GPUI-style API
 const div = zapui.elements.div.div;
-const v_flex = zapui.elements.div.v_flex;
 const h_flex = zapui.elements.div.h_flex;
 const reset = zapui.elements.div.reset;
 const px = zapui.elements.div.px;
@@ -31,7 +30,7 @@ const bg_color = zapui.rgb(0x505050);
 const border_color = zapui.rgb(0x0000ff);
 const text_color = zapui.rgb(0xffffff);
 const red = zapui.rgb(0xff0000);
-const green = zapui.hsla(0.333, 1.0, 0.25, 1.0);  // GPUI's green()
+const green = zapui.hsla(0.333, 1.0, 0.25, 1.0); // GPUI's green()
 const blue = zapui.rgb(0x0000ff);
 const yellow = zapui.rgb(0xffff00);
 const black = zapui.rgb(0x000000);
@@ -50,8 +49,8 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
     var greeting_buf: [64]u8 = undefined;
     const greeting = std.fmt.bufPrint(&greeting_buf, "Hello, {s}!", .{name}) catch "Hello, World!";
 
-    // Build the view matching GPUI's hello_world.rs - fully inlined!
-    // The only difference from Rust: text needs div().child_text() wrapper
+    // Build the view matching GPUI's hello_world.rs
+    // Note: text needs div().child_text() wrapper in Zig (no heterogeneous children)
     const root = div()
         .flex()
         .flex_col()
@@ -79,8 +78,6 @@ fn renderHelloWorld(tree: *zaffy.Zaffy, scene: *Scene, text_system: *TextSystem,
     tree.computeLayoutWithSize(root.node_id.?, 500, 500);
     root.paint(scene, text_system, 0, 0, tree, null, null);
 }
-
-
 
 // ============================================================================
 // Main
@@ -129,13 +126,10 @@ pub fn main() !void {
 
     // Load font - try system fonts that GPUI uses as fallbacks
     _ = text_system.loadFontFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") catch {
-        std.debug.print("Failed to load DejaVu Sans, trying IBM Plex Sans\n", .{});
-        _ = text_system.loadFontFile("assets/fonts/IBMPlexSans-Regular.ttf") catch {
-            std.debug.print("Failed to load IBM Plex Sans, trying JetBrains Mono\n", .{});
-            _ = text_system.loadFontFile("assets/fonts/JetBrainsMono-Regular.ttf") catch {
-                std.debug.print("Failed to load font\n", .{});
-                return;
-            };
+        std.debug.print("Warning: Could not load DejaVu Sans\n", .{});
+        _ = text_system.loadFontFile("assets/fonts/LiberationSans-Regular.ttf") catch {
+            std.debug.print("Failed to load any font\n", .{});
+            return;
         };
     };
 
@@ -158,7 +152,7 @@ pub fn main() !void {
         const fb_size = window.getFramebufferSize();
 
         renderer.setViewport(@floatFromInt(fb_size[0]), @floatFromInt(fb_size[1]), 1.0);
-        renderer.clear(zapui.rgb(0x1a1a1a)); // Dark background around the box
+        renderer.clear(zapui.rgb(0x505050)); // Match root div background
 
         var scene = Scene.init(allocator);
         defer scene.deinit();

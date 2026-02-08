@@ -5,12 +5,114 @@
 | Metric | Value |
 |--------|-------|
 | Example | `hello_world` |
-| Status | ✅ **Complete** |
-| Rust LOC | ~90 |
-| Zig LOC | ~100 |
-| Visual Match | ✅ Yes |
+| Rust LOC | 106 |
+| Div chains found | 2 |
+| Colors used | 9 |
+| Warnings | 3 |
+
+## Translation Warnings
+
+- Format strings: use std.fmt.bufPrint
+- Context/state: needs manual conversion
+- Render trait: convert to render function
+
+## Side-by-Side API Comparison
+
+### Rust (GPUI)
+
+```rust
+div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x505050))
+            .size(px(500.0))
+            .justify_center()
+            .items_center()
+            .shadow_lg()
+            .border_1()
+            .border_color(rgb(0x0000ff))
+            .text_xl()
+            .text_color(rgb(0xffffff))
+            .child(format!("Hello, {}!", &self.text))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::red())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::green())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::blue())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_col
+```
+
+### Zig (ZapUI)
+
+```zig
+// See hello_world.zig for full implementation
+// Key differences:
+// - Text children: .child("text") → .child(div().child_text("text"))
+// - Format strings: format!() → std.fmt.bufPrint()
+// - Colors: gpui::red() → red (const)
+// - Method chains are nearly identical
+```
+
+## API Mapping
+
+| GPUI (Rust) | ZapUI (Zig) | Status |
+|-------------|-------------|--------|
+| `div()` | `div()` | ✅ |
+| `.flex()` | `.flex()` | ✅ |
+| `.flex_col()` | `.flex_col()` | ✅ |
+| `.flex_row()` | `.flex_row()` | ✅ |
+| `.gap_N()` | `.gap_N()` | ✅ |
+| `.bg(rgb(0x...))` | `.bg(zapui.rgb(0x...))` | ✅ |
+| `.bg(gpui::red())` | `.bg(red)` | ✅ |
+| `.size(px(N))` | `.size(px(N))` | ✅ |
+| `.size_N()` | `.size_N()` | ✅ |
+| `.w(px(N))` | `.w(px(N))` | ✅ |
+| `.h(px(N))` | `.h(px(N))` | ✅ |
+| `.justify_center()` | `.justify_center()` | ✅ |
+| `.items_center()` | `.items_center()` | ✅ |
+| `.border_N()` | `.border_N()` | ✅ |
+| `.border_color(...)` | `.border_color(...)` | ✅ |
+| `.border_dashed()` | `.border_dashed()` | ✅ |
+| `.rounded_md()` | `.rounded_md()` | ✅ |
+| `.shadow_lg()` | `.shadow_lg()` | ✅ |
+| `.text_xl()` | `.text_xl()` | ✅ |
+| `.text_color(...)` | `.text_color(...)` | ✅ |
+| `.child("text")` | `.child(div().child_text("text"))` | ⚠️ Wrapper needed |
+| `.child(element)` | `.child(element)` | ✅ |
+| `.on_click(...)` | *not yet* | ❌ |
+| `.opacity(N)` | *not yet* | ❌ |
+| `canvas(...)` | *not yet* | ❌ |
+| `img(...)` | *not yet* | ❌ |
+| `svg(...)` | *not yet* | ❌ |
 
 ## Screenshots
+
+*Run `make capture-both EXAMPLE=hello_world` then `make compare EXAMPLE=hello_world` to generate screenshots.*
 
 ### GPUI (Rust)
 
@@ -28,122 +130,24 @@
 
 ![Diff](screenshots/diff.png)
 
-## Translation Warnings
-
-None - this example is fully ported and working!
-
-## Side-by-Side API Comparison
-
-### Rust (GPUI)
-
-```rust
-div()
-    .flex()
-    .flex_col()
-    .gap_3()
-    .bg(rgb(0x505050))
-    .size(px(500.0))
-    .justify_center()
-    .items_center()
-    .shadow_lg()
-    .border_1()
-    .border_color(rgb(0x0000ff))
-    .text_xl()
-    .text_color(rgb(0xffffff))
-    .child(format!("Hello, {}!", &self.text))
-    .child(
-        div()
-            .flex()
-            .gap_2()
-            .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-            .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-            .child(div().size_8().bg(gpui::blue()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-            .child(div().size_8().bg(gpui::yellow()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-            .child(div().size_8().bg(gpui::black()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-            .child(div().size_8().bg(gpui::white()).border_1().border_dashed().rounded_md().border_color(gpui::black()))
-    )
-```
-
-### Zig (ZapUI)
-
-```zig
-div()
-    .flex()
-    .flex_col()
-    .gap_3()
-    .bg(bg_color)
-    .size(px(500))
-    .justify_center()
-    .items_center()
-    .shadow_lg()
-    .border_1()
-    .border_color(border_color)
-    .text_xl()
-    .text_color(text_color)
-    .child(div().child_text(greeting))
-    .child(h_flex()
-        .gap_2()
-        .child(div().size_8().bg(red).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(green).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(blue).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(yellow).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(black).border_1().border_dashed().rounded_md().border_color(white))
-        .child(div().size_8().bg(white).border_1().border_dashed().rounded_md().border_color(black)))
-```
-
-## Key Differences
-
-| Aspect | GPUI (Rust) | ZapUI (Zig) | Notes |
-|--------|-------------|-------------|-------|
-| Text children | `.child("text")` | `.child(div().child_text("text"))` | Zig needs wrapper |
-| Format strings | `format!("...", x)` | `std.fmt.bufPrint(...)` | Zig syntax |
-| Colors | `gpui::red()` | `red` (const) | Pre-defined |
-| Green color | `gpui::green()` | `hsla(0.333, 1.0, 0.25, 1.0)` | GPUI uses darker green |
-| Flex row | `div().flex()` | `h_flex()` | Convenience helper |
-| Inline nesting | Natural | Works with proper formatting | Same capability |
-
-## API Mapping
-
-| GPUI (Rust) | ZapUI (Zig) | Status |
-|-------------|-------------|--------|
-| `div()` | `div()` | ✅ Identical |
-| `.flex()` | `.flex()` | ✅ Identical |
-| `.flex_col()` | `.flex_col()` | ✅ Identical |
-| `.gap_3()` | `.gap_3()` | ✅ Identical |
-| `.bg(rgb(0x...))` | `.bg(zapui.rgb(0x...))` | ✅ Same pattern |
-| `.size(px(500.0))` | `.size(px(500))` | ✅ Same pattern |
-| `.justify_center()` | `.justify_center()` | ✅ Identical |
-| `.items_center()` | `.items_center()` | ✅ Identical |
-| `.shadow_lg()` | `.shadow_lg()` | ✅ Identical |
-| `.border_1()` | `.border_1()` | ✅ Identical |
-| `.border_color(...)` | `.border_color(...)` | ✅ Identical |
-| `.border_dashed()` | `.border_dashed()` | ✅ Identical |
-| `.rounded_md()` | `.rounded_md()` | ✅ Identical |
-| `.text_xl()` | `.text_xl()` | ✅ Identical |
-| `.text_color(...)` | `.text_color(...)` | ✅ Identical |
-| `.size_8()` | `.size_8()` | ✅ Identical |
-| `.child(element)` | `.child(element)` | ✅ Identical |
-
 ## Build Instructions
 
 ### ZapUI (Zig)
 
 ```bash
-cd zapui
-make hello-world
-# or
-zig build hello-world
+# From zapui root directory
+zig build hello_world
 ./zig-out/bin/hello_world
 ```
 
 ### GPUI (Rust)
 
 ```bash
-cd zed
+# From zed repository
 cargo run --example hello_world -p gpui
 ```
 
 ## Links
 
 - [Original GPUI source](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/hello_world.rs)
-- [ZapUI port](../../playground/hello_world.zig)
+- [ZapUI Documentation](../../README.md)
