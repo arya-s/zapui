@@ -50,6 +50,15 @@ pub const SpriteInstance = extern struct {
     content_mask: [4]f32, // x, y, width, height (0,0,0,0 = no mask)
 };
 
+// Shadow instance data (matches shadow.hlsl ShadowInstance struct)
+pub const ShadowInstance = extern struct {
+    bounds: [4]f32,        // x, y, width, height
+    corner_radii: [4]f32,  // TL, TR, BR, BL
+    color: [4]f32,         // RGBA
+    blur_radius: f32,
+    _padding: [3]f32 = .{ 0, 0, 0 },
+};
+
 // Global params constant buffer for quads
 const GlobalParams = extern struct {
     viewport_size: [2]f32,
@@ -92,6 +101,12 @@ pub const D3D11Renderer = struct {
     sprite_instance_srv: ?*d3d11.ID3D11ShaderResourceView,
     sprite_constant_buffer: ?*d3d11.ID3D11Buffer,
     sprite_sampler: ?*d3d11.ID3D11SamplerState,
+
+    // Shadow shader resources
+    shadow_vertex_shader: ?*d3d11.ID3D11VertexShader,
+    shadow_pixel_shader: ?*d3d11.ID3D11PixelShader,
+    shadow_instance_buffer: ?*d3d11.ID3D11Buffer,
+    shadow_instance_srv: ?*d3d11.ID3D11ShaderResourceView,
 
     width: u32,
     height: u32,
@@ -168,6 +183,10 @@ pub const D3D11Renderer = struct {
             .sprite_instance_srv = null,
             .sprite_constant_buffer = null,
             .sprite_sampler = null,
+            .shadow_vertex_shader = null,
+            .shadow_pixel_shader = null,
+            .shadow_instance_buffer = null,
+            .shadow_instance_srv = null,
             .width = width,
             .height = height,
             .max_instances = 4096,
@@ -412,6 +431,99 @@ pub const D3D11Renderer = struct {
         );
         if (ps_create_hr != S_OK) return error.CreatePixelShaderFailed;
         self.sprite_pixel_shader = ps;
+        
+        // Create shadow shaders
+        try self.createShadowShaders();
+    }
+    
+    fn createShadowShaders(self: *D3D11Renderer) !void {
+        const shadow_source = @embedFile("../shaders/hlsl/shadow.hlsl");
+        
+        // Compile vertex shader
+        var vs_blob: *ID3DBlob = undefined;
+        var vs_errors: ?*ID3DBlob = null;
+        
+        const vs_hr = fxc.D3DCompile(
+            shadow_source.ptr,
+            shadow_source.len,
+            null,
+            null,
+            null,
+            "VSMain",
+            "vs_5_0",
+            0,
+            0,
+            @ptrCast(&vs_blob),
+            @ptrCast(&vs_errors),
+        );
+        
+        if (vs_hr != S_OK) {
+            if (vs_errors) |errs| {
+                const msg: [*:0]const u8 = @ptrCast(errs.vtable.GetBufferPointer(errs));
+                std.debug.print("Shadow VS compile error: {s}\n", .{msg});
+                release(ID3DBlob, errs);
+            }
+            return error.ShaderCompileFailed;
+        }
+        defer release(ID3DBlob, vs_blob);
+        
+        // Compile pixel shader
+        var ps_blob: *ID3DBlob = undefined;
+        var ps_errors: ?*ID3DBlob = null;
+        
+        const ps_hr = fxc.D3DCompile(
+            shadow_source.ptr,
+            shadow_source.len,
+            null,
+            null,
+            null,
+            "PSMain",
+            "ps_5_0",
+            0,
+            0,
+            @ptrCast(&ps_blob),
+            @ptrCast(&ps_errors),
+        );
+        
+        if (ps_hr != S_OK) {
+            if (ps_errors) |errs| {
+                const msg: [*:0]const u8 = @ptrCast(errs.vtable.GetBufferPointer(errs));
+                std.debug.print("Shadow PS compile error: {s}\n", .{msg});
+                release(ID3DBlob, errs);
+            }
+            return error.ShaderCompileFailed;
+        }
+        defer release(ID3DBlob, ps_blob);
+        
+        // Create vertex shader
+        const vs_ptr: [*]const u8 = @ptrCast(vs_blob.vtable.GetBufferPointer(vs_blob));
+        const vs_size = vs_blob.vtable.GetBufferSize(vs_blob);
+        
+        var vs: *d3d11.ID3D11VertexShader = undefined;
+        const vs_create_hr = self.device.vtable.CreateVertexShader(
+            self.device,
+            vs_ptr,
+            vs_size,
+            null,
+            @ptrCast(&vs),
+        );
+        if (vs_create_hr != S_OK) return error.CreateVertexShaderFailed;
+        self.shadow_vertex_shader = vs;
+        
+        // Create pixel shader
+        const ps_ptr: [*]const u8 = @ptrCast(ps_blob.vtable.GetBufferPointer(ps_blob));
+        const ps_size = ps_blob.vtable.GetBufferSize(ps_blob);
+        
+        var ps: *d3d11.ID3D11PixelShader = undefined;
+        const ps_create_hr = self.device.vtable.CreatePixelShader(
+            self.device,
+            ps_ptr,
+            ps_size,
+            null,
+            @ptrCast(&ps),
+        );
+        if (ps_create_hr != S_OK) return error.CreatePixelShaderFailed;
+        self.shadow_pixel_shader = ps;
     }
 
     fn createBuffers(self: *D3D11Renderer) !void {
@@ -516,6 +628,32 @@ pub const D3D11Renderer = struct {
         const scb_hr = self.device.vtable.CreateBuffer(self.device, &scb_desc, null, @ptrCast(&scb));
         if (scb_hr != S_OK) return error.CreateSpriteConstantBufferFailed;
         self.sprite_constant_buffer = scb;
+        
+        // Shadow instance buffer (StructuredBuffer)
+        var shib_desc = std.mem.zeroes(d3d11.D3D11_BUFFER_DESC);
+        shib_desc.ByteWidth = self.max_instances * @sizeOf(ShadowInstance);
+        shib_desc.Usage = .DYNAMIC;
+        shib_desc.BindFlags = .{ .SHADER_RESOURCE = 1 };
+        shib_desc.CPUAccessFlags = .{ .WRITE = 1 };
+        shib_desc.MiscFlags = .{ .BUFFER_STRUCTURED = 1 };
+        shib_desc.StructureByteStride = @sizeOf(ShadowInstance);
+        
+        var shib: *d3d11.ID3D11Buffer = undefined;
+        const shib_hr = self.device.vtable.CreateBuffer(self.device, &shib_desc, null, @ptrCast(&shib));
+        if (shib_hr != S_OK) return error.CreateShadowInstanceBufferFailed;
+        self.shadow_instance_buffer = shib;
+        
+        // Create SRV for shadow instance buffer
+        var shsrv_desc = std.mem.zeroes(d3d11.D3D11_SHADER_RESOURCE_VIEW_DESC);
+        shsrv_desc.Format = .UNKNOWN;
+        shsrv_desc.ViewDimension = ._SRV_DIMENSION_BUFFER;
+        shsrv_desc.Anonymous.Buffer.Anonymous1.FirstElement = 0;
+        shsrv_desc.Anonymous.Buffer.Anonymous2.NumElements = self.max_instances;
+        
+        var shsrv: *d3d11.ID3D11ShaderResourceView = undefined;
+        const shsrv_hr = self.device.vtable.CreateShaderResourceView(self.device, @ptrCast(shib), &shsrv_desc, @ptrCast(&shsrv));
+        if (shsrv_hr != S_OK) return error.CreateShadowSRVFailed;
+        self.shadow_instance_srv = shsrv;
     }
     
     fn createStates(self: *D3D11Renderer) !void {
@@ -564,6 +702,12 @@ pub const D3D11Renderer = struct {
     }
 
     pub fn deinit(self: *D3D11Renderer) void {
+        // Shadow resources
+        if (self.shadow_instance_srv) |s| release(d3d11.ID3D11ShaderResourceView, s);
+        if (self.shadow_instance_buffer) |b| release(d3d11.ID3D11Buffer, b);
+        if (self.shadow_pixel_shader) |s| release(d3d11.ID3D11PixelShader, s);
+        if (self.shadow_vertex_shader) |s| release(d3d11.ID3D11VertexShader, s);
+        
         // Sprite resources
         if (self.sprite_sampler) |s| release(d3d11.ID3D11SamplerState, s);
         if (self.sprite_constant_buffer) |b| release(d3d11.ID3D11Buffer, b);
@@ -709,6 +853,62 @@ pub const D3D11Renderer = struct {
         self.context.vtable.DrawInstanced(self.context, 6, @intCast(instances.len), 0, 0);
     }
     
+    /// Draw shadows with Gaussian blur effect
+    /// Draw shadows with Gaussian blur effect
+    pub fn drawShadows(self: *D3D11Renderer, instances: []const ShadowInstance) void {
+        if (instances.len == 0) return;
+        if (instances.len > self.max_instances) {
+            std.debug.print("Too many shadow instances: {} > {}\n", .{ instances.len, self.max_instances });
+            return;
+        }
+        
+        const shib = self.shadow_instance_buffer orelse return;
+        const vb = self.vertex_buffer orelse return;
+        const vs = self.shadow_vertex_shader orelse return;
+        const ps = self.shadow_pixel_shader orelse return;
+        const layout = self.input_layout orelse return;
+        const cb = self.constant_buffer orelse return;
+        const srv = self.shadow_instance_srv orelse return;
+        
+        // Update instance buffer
+        var mapped: d3d11.D3D11_MAPPED_SUBRESOURCE = undefined;
+        const map_hr = self.context.vtable.Map(self.context, @ptrCast(shib), 0, .WRITE_DISCARD, 0, &mapped);
+        if (map_hr != S_OK) return;
+        
+        const dest: [*]ShadowInstance = @ptrCast(@alignCast(mapped.pData));
+        @memcpy(dest[0..instances.len], instances);
+        self.context.vtable.Unmap(self.context, @ptrCast(shib), 0);
+        
+        // Set shaders
+        self.context.vtable.VSSetShader(self.context, vs, null, 0);
+        self.context.vtable.PSSetShader(self.context, ps, null, 0);
+        
+        // Set input layout (same unit quad as quads)
+        self.context.vtable.IASetInputLayout(self.context, layout);
+        
+        // Set vertex buffer
+        const stride: u32 = 8; // 2 floats
+        const offset: u32 = 0;
+        var vbs = [1]?*d3d11.ID3D11Buffer{vb};
+        self.context.vtable.IASetVertexBuffers(self.context, 0, 1, @ptrCast(&vbs), @ptrCast(&stride), @ptrCast(&offset));
+        
+        // Set primitive topology
+        self.context.vtable.IASetPrimitiveTopology(self.context, ._PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        // Set constant buffer (same GlobalParams for viewport_size)
+        var cbs = [1]?*d3d11.ID3D11Buffer{cb};
+        self.context.vtable.VSSetConstantBuffers(self.context, 0, 1, @ptrCast(&cbs));
+        self.context.vtable.PSSetConstantBuffers(self.context, 0, 1, @ptrCast(&cbs));
+        
+        // Set instance SRV for both VS and PS (PS needs it for shadow calculations)
+        var srvs = [1]?*d3d11.ID3D11ShaderResourceView{srv};
+        self.context.vtable.VSSetShaderResources(self.context, 0, 1, @ptrCast(&srvs));
+        self.context.vtable.PSSetShaderResources(self.context, 0, 1, @ptrCast(&srvs));
+        
+        // Draw instanced
+        self.context.vtable.DrawInstanced(self.context, 6, @intCast(instances.len), 0, 0);
+    }
+    
     /// Draw sprites (text glyphs or images)
     /// texture_srv: The texture to sample from (glyph atlas or image atlas)
     /// is_mono: true for monochrome text, false for color images
@@ -806,24 +1006,61 @@ pub const D3D11Renderer = struct {
 
     /// Draw a scene with optional text renderer for MonochromeSprites
     pub fn drawSceneWithText(self: *D3D11Renderer, scene: *const Scene, text_renderer: ?*d3d11_text.D3D11TextRenderer) void {
-        // Draw shadows first (behind everything)
+        // Get all primitives (already sorted by order via scene.finish())
         const shadows = scene.getShadows();
-        if (shadows.len > 0) {
-            // TODO: Implement shadow rendering for D3D11
-            // For now, shadows are skipped
-        }
-
-        // Draw quads
         const quads = scene.getQuads();
-        if (quads.len > 0) {
-            var instances: [256]QuadInstance = undefined;
-            const count = @min(quads.len, 256);
+        
+        // Draw shadows and quads interleaved by draw order (like GPUI)
+        // This ensures proper z-ordering: parent_shadow < parent_quad < child_shadow < child_quad
+        var shadow_idx: usize = 0;
+        var quad_idx: usize = 0;
+        
+        var shadow_batch: [256]ShadowInstance = undefined;
+        var quad_batch: [256]QuadInstance = undefined;
+        
+        while (shadow_idx < shadows.len or quad_idx < quads.len) {
+            const shadow_order = if (shadow_idx < shadows.len) shadows[shadow_idx].order else std.math.maxInt(u32);
+            const quad_order = if (quad_idx < quads.len) quads[quad_idx].order else std.math.maxInt(u32);
             
-            for (quads[0..count], 0..) |q, i| {
-                instances[i] = sceneQuadToInstance(q);
+            if (shadow_order <= quad_order and shadow_idx < shadows.len) {
+                // Batch consecutive shadows with order < next quad's order
+                var batch_count: usize = 0;
+                while (shadow_idx < shadows.len and batch_count < 256) {
+                    const s = shadows[shadow_idx];
+                    if (quad_idx < quads.len and s.order >= quads[quad_idx].order) break;
+                    
+                    const rgba = hslaToRgba(s.color);
+                    
+                    // Apply spread radius to expand the shadow bounds
+                    const spread = s.spread_radius;
+                    const expanded_x = s.bounds.origin.x - spread;
+                    const expanded_y = s.bounds.origin.y - spread;
+                    const expanded_w = s.bounds.size.width + 2 * spread;
+                    const expanded_h = s.bounds.size.height + 2 * spread;
+                    
+                    shadow_batch[batch_count] = .{
+                        .bounds = .{ expanded_x, expanded_y, expanded_w, expanded_h },
+                        .corner_radii = .{ s.corner_radii.top_left, s.corner_radii.top_right, s.corner_radii.bottom_right, s.corner_radii.bottom_left },
+                        .color = rgba,
+                        .blur_radius = s.blur_radius,
+                    };
+                    batch_count += 1;
+                    shadow_idx += 1;
+                }
+                if (batch_count > 0) self.drawShadows(shadow_batch[0..batch_count]);
+            } else if (quad_idx < quads.len) {
+                // Batch consecutive quads with order < next shadow's order
+                var batch_count: usize = 0;
+                while (quad_idx < quads.len and batch_count < 256) {
+                    const q = quads[quad_idx];
+                    if (shadow_idx < shadows.len and q.order >= shadows[shadow_idx].order) break;
+                    
+                    quad_batch[batch_count] = sceneQuadToInstance(q);
+                    batch_count += 1;
+                    quad_idx += 1;
+                }
+                if (batch_count > 0) self.drawQuads(quad_batch[0..batch_count]);
             }
-            
-            self.drawQuads(instances[0..count]);
         }
 
         // Draw monochrome sprites (text glyphs) if text renderer provided

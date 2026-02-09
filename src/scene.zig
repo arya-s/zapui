@@ -45,6 +45,7 @@ pub const Shadow = struct {
     bounds: Bounds(ScaledPixels),
     corner_radii: Corners(ScaledPixels) = Corners(ScaledPixels).zero,
     blur_radius: ScaledPixels = 0,
+    spread_radius: ScaledPixels = 0,
     color: Hsla = color.black().withAlpha(0.25),
     content_mask: ?Bounds(ScaledPixels) = null,
 };

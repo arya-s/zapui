@@ -158,6 +158,29 @@ pub fn build(b: *std.Build) void {
     const hello_world_step = b.step("hello-world", "Build Hello World (Win32 + D3D11)");
     hello_world_step.dependOn(b.getInstallStep());
 
+    // Shadow example (GPUI port) - Win32 + D3D11
+    const shadow_mod = b.createModule(.{
+        .root_source_file = b.path("examples/gpui_ports/shadow/shadow.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    shadow_mod.addImport("zapui", zapui_mod);
+    shadow_mod.addImport("freetype", freetype_dep.module("freetype"));
+
+    const shadow = b.addExecutable(.{
+        .name = "shadow",
+        .root_module = shadow_mod,
+    });
+
+    shadow.linkLibC();
+    shadow.linkLibrary(freetype_dep.artifact("freetype"));
+    shadow.linkLibrary(hb_lib);
+
+    b.installArtifact(shadow);
+
+    const shadow_step = b.step("shadow", "Build Shadow example (Win32 + D3D11)");
+    shadow_step.dependOn(b.getInstallStep());
+
     // Zaffy demo
     const zaffy_demo_mod = b.createModule(.{
         .root_source_file = b.path("examples/zaffy_demo.zig"),

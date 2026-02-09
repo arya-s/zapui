@@ -120,13 +120,20 @@ pub fn computeFlexboxLayout(
     const is_row = dir.isRow();
     const is_wrap_reverse = style.flex_wrap == .wrap_reverse;
 
+    // For percentage resolution, use parent_size if available, otherwise fall back to available_space
+    // This handles the root node case where parent_size is null but available_space is definite
+    const parent_size_for_resolution = Size(?f32){
+        .width = inputs.parent_size.width orelse inputs.available_space.width.intoOption(),
+        .height = inputs.parent_size.height orelse inputs.available_space.height.intoOption(),
+    };
+
     // Get container dimensions - resolve own style size first
-    const style_size = resolveSize(style.size, inputs.parent_size);
+    const style_size = resolveSize(style.size, parent_size_for_resolution);
     const known_dimensions = Size(?f32){
         .width = inputs.known_dimensions.width orelse style_size.width,
         .height = inputs.known_dimensions.height orelse style_size.height,
     };
-    const parent_size = inputs.parent_size;
+    const parent_size = parent_size_for_resolution;
     const available_space = inputs.available_space;
 
     // Resolve padding and border
@@ -234,19 +241,24 @@ pub fn computeFlexboxLayout(
         // Determine flex basis - if auto and no size, measure content
         var hypothetical_inner_main = item.flex_basis;
 
-        // If flex_basis is 0, item has children, and NO flex_grow, compute its intrinsic size
-        // Items with flex_grow are meant to grow from their base size, not from content
-        if (hypothetical_inner_main == 0 and item.size.main(dir) == null and item.flex_grow == 0) {
+        // If flex_basis is 0 and item has children, compute its intrinsic size
+        // This is needed even for items with flex_grow when the container has auto size
+        if (hypothetical_inner_main == 0 and item.size.main(dir) == null) {
             const child_style = tree.getStyle(item.node);
             if (child_style.display == .flex and tree.childCount(item.node) > 0) {
-                // Compute child's intrinsic size using max_content
+                // Compute child's intrinsic size
+                // Pass the available main space to allow proper content sizing
+                const available_main = available_content_space.main(dir);
                 const measure_inputs = LayoutInput{
                     .run_mode = .compute_size,
                     .sizing_mode = .content_size,
                     .axis = .both,
                     .known_dimensions = .{ .width = null, .height = null },
-                    .parent_size = .{ .width = null, .height = null },
-                    .available_space = .{ .width = .max_content, .height = .max_content },
+                    .parent_size = parent_size,
+                    .available_space = if (dir == .column or dir == .column_reverse)
+                        .{ .width = available_content_space.width, .height = available_main }
+                    else
+                        .{ .width = available_main, .height = available_content_space.height },
                 };
                 const measured = computeFlexboxLayout(tree, item.node, measure_inputs);
                 hypothetical_inner_main = measured.size.main(dir);
@@ -269,13 +281,19 @@ pub fn computeFlexboxLayout(
         if (cross_size == 0 and tree.childCount(item.node) > 0) {
             const child_style = tree.getStyle(item.node);
             if (child_style.display == .flex) {
+                // When measuring cross size, pass the available cross space from parent
+                // This allows percentage widths and justify-center to work correctly
+                const available_cross = available_content_space.cross(dir);
                 const measure_inputs = LayoutInput{
                     .run_mode = .compute_size,
                     .sizing_mode = .content_size,
                     .axis = .both,
                     .known_dimensions = .{ .width = null, .height = null },
-                    .parent_size = .{ .width = null, .height = null },
-                    .available_space = .{ .width = .max_content, .height = .max_content },
+                    .parent_size = parent_size,
+                    .available_space = if (dir == .column or dir == .column_reverse)
+                        .{ .width = available_cross, .height = .max_content }
+                    else
+                        .{ .width = .max_content, .height = available_cross },
                 };
                 const measured = computeFlexboxLayout(tree, item.node, measure_inputs);
                 cross_size = measured.size.cross(dir);
@@ -411,7 +429,13 @@ pub fn computeFlexboxLayout(
     // Step 5: Determine cross size of each line
     // ========================================================================
 
-    const inner_container_cross_size = available_content_space.cross(dir).intoOption();
+    // For compute_size mode, always compute intrinsic cross size
+    // For perform_layout mode, use available cross space if definite
+    const inner_container_cross_size = if (inputs.run_mode == .compute_size)
+        known_dimensions.cross(dir) // Only use explicit size, not available space
+    else
+        known_dimensions.cross(dir) orelse available_content_space.cross(dir).intoOption();
+
     const container_cross_size = inner_container_cross_size orelse blk: {
         var max_cross: f32 = 0;
         for (lines) |line| {
@@ -426,9 +450,21 @@ pub fn computeFlexboxLayout(
 
     // Distribute cross size to lines
     if (lines.len > 0) {
-        const cross_per_line = container_cross_size / @as(f32, @floatFromInt(lines.len));
-        for (lines) |*line| {
-            line.cross_size = cross_per_line;
+        if (inner_container_cross_size != null) {
+            // Container has definite cross size - distribute equally
+            const cross_per_line = container_cross_size / @as(f32, @floatFromInt(lines.len));
+            for (lines) |*line| {
+                line.cross_size = cross_per_line;
+            }
+        } else {
+            // Container has auto cross size - each line uses its intrinsic size
+            for (lines) |*line| {
+                var line_cross: f32 = 0;
+                for (line.items) |item| {
+                    line_cross = @max(line_cross, item.hypothetical_outer_size.cross(dir));
+                }
+                line.cross_size = line_cross;
+            }
         }
     }
 
@@ -650,28 +686,52 @@ fn createFlexItem(
     order: u32,
     dir: FlexDirection,
     parent_size: Size(?f32),
-    _: Size(AvailableSpace),
+    available_content_space: Size(AvailableSpace),
 ) FlexItem {
-    const padding = resolveRect(style.padding, parent_size);
-    const border = resolveRect(style.border, parent_size);
-    const margin = resolveRectAuto(style.margin, parent_size);
+    // For percentage resolution, prefer available_content_space (the container's content area)
+    // Fall back to parent_size for cases where available space is not definite
+    const size_for_resolution = Size(?f32){
+        .width = available_content_space.width.intoOption() orelse parent_size.width,
+        .height = available_content_space.height.intoOption() orelse parent_size.height,
+    };
+    
+    const padding = resolveRect(style.padding, size_for_resolution);
+    const border = resolveRect(style.border, size_for_resolution);
+    const margin = resolveRectAuto(style.margin, size_for_resolution);
     const padding_border = padding.add(border);
 
     // Determine flex basis
-    const flex_basis = switch (style.flex_basis) {
-        .length => |v| v,
-        .percent => |p| if (parent_size.main(dir)) |ps| ps * p else 0,
-        .auto => style.size.main(dir).resolve(parent_size.main(dir)) orelse 0,
-    };
+    // Note: style.size is content-box, so when flex_basis comes from style.size,
+    // it's already the inner/content size (no need to subtract padding)
+    var flex_basis: f32 = 0;
+    var flex_basis_is_content_box = false;
+    switch (style.flex_basis) {
+        .length => |v| {
+            flex_basis = v;
+            flex_basis_is_content_box = false; // explicit value includes padding
+        },
+        .percent => |p| {
+            flex_basis = if (size_for_resolution.main(dir)) |ps| ps * p else 0;
+            flex_basis_is_content_box = false;
+        },
+        .auto => {
+            flex_basis = style.size.main(dir).resolve(size_for_resolution.main(dir)) orelse 0;
+            flex_basis_is_content_box = true; // style.size is content-box
+        },
+    }
 
-    const inner_flex_basis = @max(0, flex_basis - padding_border.mainAxisSum(dir));
+    // Only subtract padding if flex_basis is NOT from content-box style.size
+    const inner_flex_basis = if (flex_basis_is_content_box)
+        flex_basis // Already content size
+    else
+        @max(0, flex_basis - padding_border.mainAxisSum(dir));
 
     return FlexItem{
         .node = node,
         .order = order,
-        .size = resolveSize(style.size, parent_size),
-        .min_size = resolveSize(style.min_size, parent_size),
-        .max_size = resolveSize(style.max_size, parent_size),
+        .size = resolveSize(style.size, size_for_resolution),
+        .min_size = resolveSize(style.min_size, size_for_resolution),
+        .max_size = resolveSize(style.max_size, size_for_resolution),
         .align_self = style.align_self orelse .auto,
         .flex_shrink = style.flex_shrink,
         .flex_grow = style.flex_grow,

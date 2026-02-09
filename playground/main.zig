@@ -104,7 +104,7 @@ var g_cursor_blink: u32 = 0;
 
 fn resetHitboxes() void { g_hitbox_count = 0; }
 
-fn addHitbox(bounds: Bounds(Pixels), id: usize) void {
+fn addHitbox(id: usize, bounds: Bounds(Pixels)) void {
     if (g_hitbox_count < g_hitboxes.len) {
         g_hitboxes[g_hitbox_count] = .{ .bounds = bounds, .id = id };
         g_hitbox_count += 1;

@@ -5,6 +5,8 @@ description: Port GPUI (Rust) examples to ZapUI (Zig) using Win32 + D3D11. Use w
 
 # Port GPUI Example to ZapUI
 
+**IMPORTANT:** Always run through ALL steps automatically. Do not stop and list "next steps" for the user. Complete the entire workflow including screenshot capture and comparison.
+
 ## Workflow
 
 ### 1. Generate skeleton
@@ -68,24 +70,48 @@ ZapUI has a GPUI-compatible div element system. The API matches closely:
 
 **Key difference:** In GPUI, `.child("text")` accepts a string directly. In ZapUI, wrap text in a div: `.child(div().child_text("text"))`.
 
+**Note:** Don't include GPUI Rust code as comments in the Zig file. The original Rust source is kept in `<name>.rs` and the report shows side-by-side comparison.
+
 ### 4. Build
 ```bash
 make windows
 ```
 
-### 5. Capture screenshots
+### 5. Build GPUI example (if needed)
+
+The GPUI Rust example must be built via PowerShell (not WSL) since it targets Windows:
+
+```bash
+powershell.exe -Command "cd C:\src\zed; cargo build -p gpui --example <name>"
+```
+
+### 6. Capture screenshots
 ```bash
 make capture-both EXAMPLE=<name>
 ```
 
-### 6. Generate comparison
+Uses ShareX CLI to automatically capture the active window. Requires ShareX installed at `C:\Program Files\ShareX\`.
+
+**How the capture works:**
+1. Launch the executable via PowerShell
+2. Wait 1 second for the window to render
+3. Activate the window using `SetForegroundWindow` (ensures correct window is captured)
+4. Wait 1 second
+5. Run ShareX with `-ActiveWindow -silent` to capture
+6. ShareX saves to its default `Documents\ShareX\Screenshots` folder (ignores `-ImagePath` for WSL paths)
+7. Script finds the most recent screenshot and copies it to the example's `screenshots/` folder
+
+### 7. Generate comparison with code analysis
 ```bash
 make compare EXAMPLE=<name>
 ```
 
-Creates diff.png, toggle.gif, and updates report.html.
+This creates:
+- `diff.png` - Pixel difference visualization
+- `toggle.gif` - Animated comparison
+- `report.html` - Full report with **UI code overlap analysis**
 
-### 7. View results
+### 8. View results
 
 Open the HTML report in a browser:
 ```
@@ -97,47 +123,59 @@ Or on Windows:
 explorer.exe "$(wslpath -w examples/gpui_ports/<name>/report.html)"
 ```
 
+## Report Features
+
+The generated report includes:
+
+### Screenshots
+- GPUI screenshot
+- ZapUI screenshot  
+- Pixel difference image
+- Animated toggle GIF
+
+### UI Code Overlap Analysis
+- **API Similarity Score** - Percentage of shared UI methods
+- **Method Comparison**:
+  - ✓ Methods used by both (e.g., `.flex()`, `.bg()`, `.child()`)
+  - Rust-only methods (features not yet ported)
+  - Zig-only methods (Zig-specific additions)
+- **Color Comparison** - Shared colors with visual swatches
+- **Render Function Extraction** - Side-by-side comparison of just the render() code
+
+### Source Code
+- Full Rust source
+- Full Zig source
+- Links to original GPUI repo
+
 ## Example: hello_world
 
 **Rust (GPUI):**
 ```rust
-impl Render for HelloWorld {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .bg(rgb(0x505050))
-            .size(px(500.0))
-            .justify_center()
-            .items_center()
-            .text_xl()
-            .text_color(rgb(0xffffff))
-            .child(format!("Hello, {}!", &self.text))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-                    .child(div().size_8().bg(gpui::green()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-                    // ...
-            )
-    }
+fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .bg(rgb(0x505050))
+        .size(px(500.0))
+        .justify_center()
+        .items_center()
+        .text_xl()
+        .text_color(rgb(0xffffff))
+        .child(format!("Hello, {}!", &self.text))
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
+                // ...
+        )
 }
 ```
 
 **Zig (ZapUI):**
 ```zig
-const div_mod = zapui.elements.div;
-const div = div_mod.div;
-const px = div_mod.px;
-const color = zapui.color;
-const rgb = color.rgb;
-const red = color.red;
-const white = color.white;
-// ...
-
-fn render(self: *HelloWorld, allocator: std.mem.Allocator, label_buf: []u8) !*div_mod.Div {
+fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
     const label = std.fmt.bufPrint(label_buf, "Hello, {s}!", .{self.text}) catch "Hello!";
 
     return div()
@@ -150,16 +188,19 @@ fn render(self: *HelloWorld, allocator: std.mem.Allocator, label_buf: []u8) !*di
         .items_center()
         .text_xl()
         .text_color(rgb(0xffffff))
-        .child(div().child_text(label))  // text wrapped in div
-        .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
-                .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
-                // ...
+        .child(div().child_text(label))
+        .child(div().flex().gap_2()
+            .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
+            // ...
         );
 }
+```
+
+**Analysis output:**
+```
+API Similarity: 89%
+Methods: 16 shared, 1 Rust-only, 1 Zig-only
+Colors: 8 shared
 ```
 
 ## Main loop structure

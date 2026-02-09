@@ -28,18 +28,9 @@
         }
         .card h3 { margin-top: 0; color: #3b82f6; }
         
-        .screenshot {
-            max-width: 100%;
-            border-radius: 4px;
-            border: 1px solid #444;
-        }
-        .screenshot-container {
-            text-align: center;
-        }
-        .screenshot-container img {
-            max-height: 400px;
-            object-fit: contain;
-        }
+        .screenshot { max-width: 100%; border-radius: 4px; border: 1px solid #444; }
+        .screenshot-container { text-align: center; }
+        .screenshot-container img { max-height: 400px; object-fit: contain; }
         
         pre {
             background: #1e1e1e;
@@ -52,45 +43,45 @@
             max-height: 600px;
             overflow-y: auto;
         }
-        code { font-family: 'Fira Code', 'Consolas', monospace; }
+        code { font-family: 'Fira Code', 'Consolas', monospace; background: #333; padding: 2px 6px; border-radius: 3px; }
+        pre code { background: none; padding: 0; }
         
         .rust { border-left: 3px solid #dea584; }
         .zig { border-left: 3px solid #f7a41d; }
         
-        .warnings { background: #3a2a00; border-color: #5a4a00; }
-        .warnings li { margin: 5px 0; }
-        .warnings .success { color: #4ade80; }
-        
-        .stats {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .stat {
-            background: #333;
-            padding: 10px 20px;
-            border-radius: 4px;
-        }
+        .stats { display: flex; gap: 20px; flex-wrap: wrap; }
+        .stat { background: #333; padding: 10px 20px; border-radius: 4px; }
         .stat-value { font-size: 24px; font-weight: bold; color: #3b82f6; }
         .stat-label { font-size: 12px; color: #888; }
+        .stat-value.green { color: #4ade80; }
+        .stat-value.yellow { color: #facc15; }
+        .stat-value.red { color: #f87171; }
         
-        .commands {
-            background: #1e1e1e;
-            padding: 15px;
-            border-radius: 4px;
-            font-family: monospace;
+        .analysis-table { width: 100%; border-collapse: collapse; }
+        .analysis-table th, .analysis-table td { padding: 10px; text-align: left; border-bottom: 1px solid #333; }
+        .analysis-table th { color: #888; font-weight: normal; }
+        .analysis-table td { color: #e0e0e0; }
+        
+        .method-list { line-height: 2; }
+        .match { color: #4ade80; }
+        .mismatch { color: #f87171; }
+        
+        .progress-bar { 
+            background: #333; 
+            border-radius: 4px; 
+            height: 8px; 
+            overflow: hidden;
+            margin-top: 5px;
         }
-        .commands code {
-            display: block;
-            padding: 5px 0;
-            color: #4ade80;
+        .progress-fill { 
+            height: 100%; 
+            background: linear-gradient(90deg, #4ade80, #3b82f6);
+            transition: width 0.3s;
         }
         
         a { color: #3b82f6; }
         
-        @media (max-width: 900px) {
-            .grid, .grid-3 { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 900px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -102,33 +93,28 @@
             <div class="stat-label">Rust LOC</div>
         </div>
         <div class="stat">
-            <div class="stat-value">110</div>
+            <div class="stat-value">149</div>
             <div class="stat-label">Zig LOC</div>
         </div>
         <div class="stat">
-            <div class="stat-value">9</div>
-            <div class="stat-label">Colors</div>
+            <div class="stat-value green">97%</div>
+            <div class="stat-label">API Similarity</div>
         </div>
         <div class="stat">
-            <div class="stat-value">500x500</div>
-            <div class="stat-label">Window Size</div>
+            <div class="stat-value">17/18</div>
+            <div class="stat-label">Shared Methods</div>
         </div>
-    </div>
-    
-    <h2>⚠️ Translation Warnings</h2>
-    <div class="card warnings">
-        <ul><li>Context/state: needs manual conversion</li><li>Render trait: convert to render function</li><li>Format strings: use std.fmt.bufPrint</li></ul>
     </div>
     
     <h2>📸 Screenshots</h2>
     <div class="grid-3">
         <div class="card screenshot-container">
             <h3>GPUI (Rust)</h3>
-            <img src="screenshots/gpui.png" alt="GPUI Screenshot" class="screenshot">
+            <img src="screenshots/gpui.png" alt="GPUI" class="screenshot">
         </div>
         <div class="card screenshot-container">
             <h3>ZapUI (Zig)</h3>
-            <img src="screenshots/zapui.png" alt="ZapUI Screenshot" class="screenshot">
+            <img src="screenshots/zapui.png" alt="ZapUI" class="screenshot">
         </div>
         <div class="card screenshot-container">
             <h3>Difference</h3>
@@ -138,10 +124,171 @@
     
     <h2>🔄 Animated Comparison</h2>
     <div class="card screenshot-container">
-        <img src="screenshots/toggle.gif" alt="Toggle Animation" class="screenshot">
+        <img src="screenshots/toggle.gif" alt="Toggle" class="screenshot">
     </div>
     
-    <h2>📝 Source Code</h2>
+    <h2>🔍 UI Code Analysis</h2>
+    
+    <div class="grid">
+        <div class="card">
+            <h3>Method Similarity: 94%</h3>
+            <div class="progress-bar"><div class="progress-fill" style="width:94.44444444444444%"></div></div>
+            <table class="analysis-table" style="margin-top:15px">
+                <tr>
+                    <th>Category</th>
+                    <th>Methods</th>
+                </tr>
+                <tr>
+                    <td class="match">✓ Both use</td>
+                    <td class="method-list"><code>.bg()</code>, <code>.border_1()</code>, <code>.border_color()</code>, <code>.border_dashed()</code>, <code>.child()</code>, <code>.flex()</code>, <code>.flex_col()</code>, <code>.gap_2()</code>, <code>.gap_3()</code>, <code>.items_center()</code>, <code>.justify_center()</code>, <code>.rounded_md()</code>, <code>.shadow_lg()</code>, <code>.size()</code>, <code>.size_8()</code>, <code>.text_color()</code>, <code>.text_xl()</code></td>
+                </tr>
+                <tr>
+                    <td class="mismatch">Rust only</td>
+                    <td class="method-list"><em>None</em></td>
+                </tr>
+                <tr>
+                    <td class="mismatch">Zig only</td>
+                    <td class="method-list"><code>.child_text()</code></td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="card">
+            <h3>Color Similarity: 100%</h3>
+            <div class="progress-bar"><div class="progress-fill" style="width:100.0%"></div></div>
+            <table class="analysis-table" style="margin-top:15px">
+                <tr>
+                    <th>Category</th>
+                    <th>Colors</th>
+                </tr>
+                <tr>
+                    <td class="match">✓ Both use</td>
+                    <td class="method-list"><span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x0000ff</code>, <span style="display:inline-block;width:12px;height:12px;background:#505050;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x505050</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0xffffff</code>, <span style="display:inline-block;width:12px;height:12px;background:#000000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>black()</code>, <span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>blue()</code>, <span style="display:inline-block;width:12px;height:12px;background:#00ff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>green()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ff0000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>red()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>white()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>yellow()</code></td>
+                </tr>
+                <tr>
+                    <td>Rust colors</td>
+                    <td class="method-list"><span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x0000ff</code>, <span style="display:inline-block;width:12px;height:12px;background:#505050;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x505050</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0xffffff</code>, <span style="display:inline-block;width:12px;height:12px;background:#000000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>black()</code>, <span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>blue()</code>, <span style="display:inline-block;width:12px;height:12px;background:#00ff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>green()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ff0000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>red()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>white()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>yellow()</code></td>
+                </tr>
+                <tr>
+                    <td>Zig colors</td>
+                    <td class="method-list"><span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x0000ff</code>, <span style="display:inline-block;width:12px;height:12px;background:#505050;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0x505050</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>0xffffff</code>, <span style="display:inline-block;width:12px;height:12px;background:#000000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>black()</code>, <span style="display:inline-block;width:12px;height:12px;background:#0000ff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>blue()</code>, <span style="display:inline-block;width:12px;height:12px;background:#00ff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>green()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ff0000;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>red()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffffff;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>white()</code>, <span style="display:inline-block;width:12px;height:12px;background:#ffff00;border:1px solid #666;vertical-align:middle;margin-right:4px;"></span><code>yellow()</code></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    
+    <h2>🎯 Render Function Comparison</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>Rust render()</h3>
+            <pre class="rust"><code>    fn render(&amp;mut self, _window: &amp;mut Window, _cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x505050))
+            .size(px(500.0))
+            .justify_center()
+            .items_center()
+            .shadow_lg()
+            .border_1()
+            .border_color(rgb(0x0000ff))
+            .text_xl()
+            .text_color(rgb(0xffffff))
+            .child(format!(&quot;Hello, {}!&quot;, &amp;self.text))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::red())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::green())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::blue())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::yellow())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::black())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .rounded_md()
+                            .border_color(gpui::white()),
+                    )
+                    .child(
+                        div()
+                            .size_8()
+                            .bg(gpui::white())
+                            .border_1()
+                            .border_dashed()
+                            .rounded_md()
+                            .border_color(gpui::black()),
+                    ),
+            )
+    }</code></pre>
+        </div>
+        <div class="card">
+            <h3>Zig render()</h3>
+            <pre class="zig"><code>    fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
+        const label = std.fmt.bufPrint(label_buf, &quot;Hello, {s}!&quot;, .{self.text}) catch &quot;Hello!&quot;;
+
+        return div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x505050))
+            .size(px(500))
+            .justify_center()
+            .items_center()
+            .shadow_lg()
+            .border_1()
+            .border_color(rgb(0x0000ff))
+            .text_xl()
+            .text_color(rgb(0xffffff))
+            .child(div().child_text(label))
+            .child(div().flex().gap_2()
+                .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())));
+    }</code></pre>
+        </div>
+    </div>
+    
+    <h2>📝 Full Source Code</h2>
     <div class="grid">
         <div class="card">
             <h3>Rust (GPUI) - hello_world.rs</h3>
@@ -260,71 +407,68 @@ fn main() {
 const std = @import(&quot;std&quot;);
 const zapui = @import(&quot;zapui&quot;);
 
+// Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
-const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
+const D3D11SceneContext = zapui.renderer.d3d11_scene.D3D11SceneContext;
+const GlyphCache = zapui.glyph_cache.GlyphCache;
+const Scene = zapui.scene.Scene;
+
+// Platform
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors
-fn rgb(hex: u24) [4]f32 {
-    return .{
-        @as(f32, @floatFromInt((hex &gt;&gt; 16) &amp; 0xFF)) / 255.0,
-        @as(f32, @floatFromInt((hex &gt;&gt; 8) &amp; 0xFF)) / 255.0,
-        @as(f32, @floatFromInt(hex &amp; 0xFF)) / 255.0,
-        1.0,
-    };
-}
-// rgb(0x0000ff)
-// rgb(0x505050)
-const black = [4]f32{ 0, 0, 0, 1 };
-const blue = [4]f32{ 0, 0, 1, 1 };
-// rgb(0xffffff)
-const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()
-const red = [4]f32{ 1, 0, 0, 1 };
-const white = [4]f32{ 1, 1, 1, 1 };
-const yellow = [4]f32{ 1, 1, 0, 1 };
+// Layout
+const zaffy = zapui.zaffy;
+const text_system = zapui.text_system;
+
+// Div system (GPUI-compatible API)
+const div_mod = zapui.elements.div;
+const div = div_mod.div;
+const px = div_mod.px;
+
+// Colors (GPUI-compatible API)
+const color = zapui.color;
+const rgb = color.rgb;
+const black = color.black;
+const blue = color.blue;
+const green = color.green;
+const red = color.red;
+const white = color.white;
+const yellow = color.yellow;
 
 // ============================================================================
 // HelloWorld
 // ============================================================================
 
 const HelloWorld = struct {
-    // TODO: Add state fields from Rust struct
+    text: []const u8,
 
-    fn render(self: *HelloWorld, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {
-        _ = self;
-        _ = text_renderer;
-        
-        // TODO: Port the render() implementation from hello_world.rs
-        // 
-        // GPUI patterns -&gt; ZapUI:
-        //   div().bg(rgb(0xNNNNNN))     -&gt; renderer.clear(rgb(0xNNNNNN))
-        //   div().size_8().bg(color)   -&gt; quad(x, y, 32, color, border)
-        //   .child(&quot;text&quot;)             -&gt; text_renderer.draw(renderer, &quot;text&quot;, x, y, color)
-        //   format!(&quot;...&quot;, val)        -&gt; std.fmt.bufPrint(&amp;buf, &quot;...&quot;, .{val})
-        
-        renderer.clear(0.2, 0.2, 0.2, 1.0);
-        
-        // Example quad:
-        // const quads = [_]QuadInstance{
-        //     quad(100, 100, 32, red, white),
-        // };
-        // renderer.drawQuads(&amp;quads);
+    fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
+        const label = std.fmt.bufPrint(label_buf, &quot;Hello, {s}!&quot;, .{self.text}) catch &quot;Hello!&quot;;
+
+        return div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x505050))
+            .size(px(500))
+            .justify_center()
+            .items_center()
+            .shadow_lg()
+            .border_1()
+            .border_color(rgb(0x0000ff))
+            .text_xl()
+            .text_color(rgb(0xffffff))
+            .child(div().child_text(label))
+            .child(div().flex().gap_2()
+                .child(div().size_8().bg(red()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(green()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(blue()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(yellow()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(black()).border_1().border_dashed().rounded_md().border_color(white()))
+                .child(div().size_8().bg(white()).border_1().border_dashed().rounded_md().border_color(black())));
     }
 };
-
-// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
-fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
-    return .{
-        .bounds = .{ x, y, size, size },
-        .background_color = bg,
-        .border_color = border,
-        .border_widths = .{ 1, 1, 1, 1 },
-        .corner_radii = .{ 6, 6, 6, 6 },
-        .border_style = .{ 1, 0, 0, 0 }, // dashed
-        .content_mask = .{ 0, 0, 0, 0 },
-    };
-}
 
 // ============================================================================
 // Main
@@ -333,6 +477,9 @@ fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {
 const font_data = @embedFile(&quot;LiberationSans-Regular.ttf&quot;);
 
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    // Platform
     var platform = try Win32.init();
     defer platform.deinit();
 
@@ -343,13 +490,40 @@ pub fn main() !void {
     });
     defer window.destroy();
 
-    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, 500, 500);
+    // Renderer
+    var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    var text_renderer = try D3D11TextRenderer.init(std.heap.page_allocator, &amp;renderer, font_data, 20);
+    // Text system (for layout measurement)
+    var ts = try text_system.TextSystem.init(allocator);
+    defer ts.deinit();
+    _ = try ts.loadFontMem(font_data);
+
+    // Glyph cache (for text rasterization)
+    var glyph_cache = try GlyphCache.init(allocator);
+    defer glyph_cache.deinit();
+    const font_id = try glyph_cache.loadFont(font_data);
+
+    // Text renderer (for D3D11 rendering)
+    var text_renderer = try D3D11TextRenderer.init(allocator, &amp;renderer, &amp;glyph_cache, font_id, 20);
     defer text_renderer.deinit();
 
-    var state = HelloWorld{};
+    // Scene context (combines renderer + text renderer)
+    var scene_ctx = D3D11SceneContext{
+        .renderer = &amp;renderer,
+        .text_renderer = &amp;text_renderer,
+    };
+
+    // Layout engine
+    var layout = zaffy.Zaffy.init(allocator);
+    defer layout.deinit();
+
+    // Scene for quad batching
+    var scene = Scene.init(allocator);
+    defer scene.deinit();
+
+    // State
+    var state = HelloWorld{ .text = &quot;World&quot; };
 
     while (!window.shouldClose()) {
         for (window.pollEvents()) |e| {
@@ -360,8 +534,20 @@ pub fn main() !void {
             }
         }
 
+        // Build UI
+        div_mod.reset();
+        var label_buf: [256]u8 = undefined;
+        const root = state.render(&amp;label_buf);
+
+        // Layout
+        try root.buildWithTextSystem(&amp;layout, 16, &amp;ts);
+        layout.computeLayoutWithSize(root.node_id.?, 500, 500);
+
+        // Render
         renderer.beginFrame();
-        state.render(&amp;renderer, &amp;text_renderer);
+        const bg = rgb(0x505050).toRgba();
+        renderer.clear(bg.r, bg.g, bg.b, bg.a);
+        scene_ctx.renderDiv(root, &amp;layout, &amp;scene);
         renderer.present(true);
     }
 }
@@ -369,23 +555,10 @@ pub fn main() !void {
         </div>
     </div>
     
-    <h2>🛠️ Build Commands</h2>
-    <div class="commands">
-        <code># Build for Windows</code>
-        <code>make windows</code>
-        <code></code>
-        <code># Capture screenshots</code>
-        <code>make capture-both EXAMPLE=hello_world</code>
-        <code></code>
-        <code># Generate comparison</code>
-        <code>make compare EXAMPLE=hello_world</code>
-    </div>
-    
     <h2>🔗 Links</h2>
     <ul>
         <li><a href="https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/hello_world.rs" target="_blank">Original GPUI Source</a></li>
         <li><a href="hello_world.zig">ZapUI Port Source</a></li>
-        <li><a href="hello_world.rs">Local GPUI Copy</a></li>
     </ul>
 </body>
 </html>

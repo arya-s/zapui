@@ -1,17 +1,7 @@
 //! Hello World - Port of GPUI's hello_world.rs example
-//!
-//! Uses ZapUI's div element system with GPUI-compatible API.
 
 const std = @import("std");
 const zapui = @import("zapui");
-
-// Element system
-const div_mod = zapui.elements.div;
-const div = div_mod.div;
-const px = div_mod.px;
-
-// Layout
-const zaffy = zapui.zaffy;
 
 // Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
@@ -23,15 +13,24 @@ const Scene = zapui.scene.Scene;
 // Platform
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors (matches GPUI's color functions)
+// Layout
+const zaffy = zapui.zaffy;
+const text_system = zapui.text_system;
+
+// Div system (GPUI-compatible API)
+const div_mod = zapui.elements.div;
+const div = div_mod.div;
+const px = div_mod.px;
+
+// Colors (GPUI-compatible API)
 const color = zapui.color;
 const rgb = color.rgb;
-const red = color.red;
-const green = color.green;
-const blue = color.blue;
-const yellow = color.yellow;
 const black = color.black;
+const blue = color.blue;
+const green = color.green;
+const red = color.red;
 const white = color.white;
+const yellow = color.yellow;
 
 // ============================================================================
 // HelloWorld
@@ -40,25 +39,6 @@ const white = color.white;
 const HelloWorld = struct {
     text: []const u8,
 
-    // Port of GPUI's Render trait implementation:
-    //
-    // impl Render for HelloWorld {
-    //     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-    //         div()
-    //             .flex().flex_col().gap_3()
-    //             .bg(rgb(0x505050))
-    //             .size(px(500.0))
-    //             .justify_center().items_center()
-    //             .text_xl().text_color(rgb(0xffffff))
-    //             .child(format!("Hello, {}!", &self.text))
-    //             .child(div().flex().gap_2()
-    //                 .child(div().size_8().bg(gpui::red()).border_1().border_dashed().rounded_md().border_color(gpui::white()))
-    //                 .child(div().size_8().bg(gpui::green())...)
-    //                 ...
-    //             )
-    //     }
-    // }
-    //
     fn render(self: *HelloWorld, label_buf: []u8) *div_mod.Div {
         const label = std.fmt.bufPrint(label_buf, "Hello, {s}!", .{self.text}) catch "Hello!";
 
@@ -70,6 +50,9 @@ const HelloWorld = struct {
             .size(px(500))
             .justify_center()
             .items_center()
+            .shadow_lg()
+            .border_1()
+            .border_color(rgb(0x0000ff))
             .text_xl()
             .text_color(rgb(0xffffff))
             .child(div().child_text(label))
@@ -107,34 +90,35 @@ pub fn main() !void {
     var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, 500, 500);
     defer renderer.deinit();
 
-    // Shared glyph cache
+    // Text system (for layout measurement)
+    var ts = try text_system.TextSystem.init(allocator);
+    defer ts.deinit();
+    _ = try ts.loadFontMem(font_data);
+
+    // Glyph cache (for text rasterization)
     var glyph_cache = try GlyphCache.init(allocator);
     defer glyph_cache.deinit();
     const font_id = try glyph_cache.loadFont(font_data);
 
-    // Text system (for layout measurement)
-    var text_system = try zapui.text_system.TextSystem.init(allocator);
-    defer text_system.deinit();
-    _ = try text_system.loadFontMem(font_data);
-
-    // Text renderer (uses shared glyph cache)
+    // Text renderer (for D3D11 rendering)
     var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, &glyph_cache, font_id, 20);
     defer text_renderer.deinit();
 
-    // Scene context
+    // Scene context (combines renderer + text renderer)
     var scene_ctx = D3D11SceneContext{
         .renderer = &renderer,
         .text_renderer = &text_renderer,
     };
 
-    // Layout & scene
+    // Layout engine
     var layout = zaffy.Zaffy.init(allocator);
     defer layout.deinit();
 
+    // Scene for quad batching
     var scene = Scene.init(allocator);
     defer scene.deinit();
 
-    // Application state
+    // State
     var state = HelloWorld{ .text = "World" };
 
     while (!window.shouldClose()) {
@@ -148,16 +132,17 @@ pub fn main() !void {
 
         // Build UI
         div_mod.reset();
-        var label_buf: [64]u8 = undefined;
+        var label_buf: [256]u8 = undefined;
         const root = state.render(&label_buf);
 
         // Layout
-        try root.buildWithTextSystem(&layout, 16, &text_system);
+        try root.buildWithTextSystem(&layout, 16, &ts);
         layout.computeLayoutWithSize(root.node_id.?, 500, 500);
 
         // Render
         renderer.beginFrame();
-        renderer.clear(0.314, 0.314, 0.314, 1.0);
+        const bg = rgb(0x505050).toRgba();
+        renderer.clear(bg.r, bg.g, bg.b, bg.a);
         scene_ctx.renderDiv(root, &layout, &scene);
         renderer.present(true);
     }

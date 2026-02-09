@@ -297,49 +297,41 @@ def generate_zig_skeleton(name: str, rust_code: str, analysis: dict) -> str:
     
     # Generate color definitions
     color_defs = []
+    # Build color imports based on what's used
+    color_imports = []
     for color in sorted(analysis['colors']):
-        if color == 'red':
-            color_defs.append("const red = [4]f32{ 1, 0, 0, 1 };")
-        elif color == 'green':
-            color_defs.append("const green = [4]f32{ 0, 0.5, 0, 1 }; // gpui::green()")
-        elif color == 'blue':
-            color_defs.append("const blue = [4]f32{ 0, 0, 1, 1 };")
-        elif color == 'yellow':
-            color_defs.append("const yellow = [4]f32{ 1, 1, 0, 1 };")
-        elif color == 'black':
-            color_defs.append("const black = [4]f32{ 0, 0, 0, 1 };")
-        elif color == 'white':
-            color_defs.append("const white = [4]f32{ 1, 1, 1, 1 };")
-        else:
-            try:
-                r = int(color[0:2], 16) / 255.0
-                g = int(color[2:4], 16) / 255.0
-                b = int(color[4:6], 16) / 255.0
-                color_defs.append(f"// rgb(0x{color})")
-            except:
-                pass
+        if color in ['red', 'green', 'blue', 'yellow', 'black', 'white']:
+            color_imports.append(f"const {color} = color.{color};")
     
-    colors_section = '\n'.join(color_defs) if color_defs else "// Define colors as needed"
+    colors_section = '\n'.join(color_imports) if color_imports else ""
     
     return f'''//! {title} - Port of GPUI's {name}.rs example
 
 const std = @import("std");
 const zapui = @import("zapui");
 
+// Rendering
 const D3D11Renderer = zapui.renderer.d3d11_renderer.D3D11Renderer;
 const D3D11TextRenderer = zapui.renderer.d3d11_text.D3D11TextRenderer;
-const QuadInstance = zapui.renderer.d3d11_renderer.QuadInstance;
+const D3D11SceneContext = zapui.renderer.d3d11_scene.D3D11SceneContext;
+const GlyphCache = zapui.glyph_cache.GlyphCache;
+const Scene = zapui.scene.Scene;
+
+// Platform
 const Win32 = zapui.platform.Win32Backend;
 
-// Colors
-fn rgb(hex: u24) [4]f32 {{
-    return .{{
-        @as(f32, @floatFromInt((hex >> 16) & 0xFF)) / 255.0,
-        @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255.0,
-        @as(f32, @floatFromInt(hex & 0xFF)) / 255.0,
-        1.0,
-    }};
-}}
+// Layout
+const zaffy = zapui.zaffy;
+const text_system = zapui.text_system;
+
+// Div system (GPUI-compatible API)
+const div_mod = zapui.elements.div;
+const div = div_mod.div;
+const px = div_mod.px;
+
+// Colors (GPUI-compatible API)
+const color = zapui.color;
+const rgb = color.rgb;
 {colors_section}
 
 // ============================================================================
@@ -349,40 +341,37 @@ fn rgb(hex: u24) [4]f32 {{
 const {class_name} = struct {{
     // TODO: Add state fields from Rust struct
 
-    fn render(self: *{class_name}, renderer: *D3D11Renderer, text_renderer: *D3D11TextRenderer) void {{
+    fn render(self: *{class_name}, label_buf: []u8) *div_mod.Div {{
         _ = self;
-        _ = text_renderer;
+        _ = label_buf;
         
         // TODO: Port the render() implementation from {name}.rs
-        // 
-        // GPUI patterns -> ZapUI:
-        //   div().bg(rgb(0xNNNNNN))     -> renderer.clear(rgb(0xNNNNNN))
-        //   div().size_8().bg(color)   -> quad(x, y, 32, color, border)
-        //   .child("text")             -> text_renderer.draw(renderer, "text", x, y, color)
-        //   format!("...", val)        -> std.fmt.bufPrint(&buf, "...", .{{val}})
+        //
+        // GPUI -> ZapUI mapping (API is nearly identical):
+        //   div()                    -> div()
+        //   .flex().flex_col()       -> .flex().flex_col()
+        //   .bg(rgb(0x505050))       -> .bg(rgb(0x505050))
+        //   .size(px(500.0))         -> .size(px(500))
+        //   .gap_3()                 -> .gap_3()
+        //   .justify_center()        -> .justify_center()
+        //   .items_center()          -> .items_center()
+        //   .text_xl()               -> .text_xl()
+        //   .text_color(rgb(...))    -> .text_color(rgb(...))
+        //   .child("text")           -> .child(div().child_text("text"))
+        //   .child(div()...)         -> .child(div()...)
+        //   .size_8()                -> .size_8()
+        //   .border_1()              -> .border_1()
+        //   .border_dashed()         -> .border_dashed()
+        //   .rounded_md()            -> .rounded_md()
+        //   .border_color(white())   -> .border_color(white())
+        //   gpui::red()              -> red()
+        //   format!("...", val)      -> std.fmt.bufPrint(label_buf, "...", .{{val}})
         
-        renderer.clear(0.2, 0.2, 0.2, 1.0);
-        
-        // Example quad:
-        // const quads = [_]QuadInstance{{
-        //     quad(100, 100, 32, red, white),
-        // }};
-        // renderer.drawQuads(&quads);
+        return div()
+            .size(px({width}))
+            .bg(rgb(0x505050));
     }}
 }};
-
-// Helper: div().size(s).bg(bg).border_1().border_dashed().rounded_md().border_color(border)
-fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {{
-    return .{{
-        .bounds = .{{ x, y, size, size }},
-        .background_color = bg,
-        .border_color = border,
-        .border_widths = .{{ 1, 1, 1, 1 }},
-        .corner_radii = .{{ 6, 6, 6, 6 }},
-        .border_style = .{{ 1, 0, 0, 0 }}, // dashed
-        .content_mask = .{{ 0, 0, 0, 0 }},
-    }};
-}}
 
 // ============================================================================
 // Main
@@ -391,6 +380,9 @@ fn quad(x: f32, y: f32, size: f32, bg: [4]f32, border: [4]f32) QuadInstance {{
 const font_data = @embedFile("LiberationSans-Regular.ttf");
 
 pub fn main() !void {{
+    const allocator = std.heap.page_allocator;
+
+    // Platform
     var platform = try Win32.init();
     defer platform.deinit();
 
@@ -401,12 +393,39 @@ pub fn main() !void {{
     }});
     defer window.destroy();
 
-    var renderer = try D3D11Renderer.init(std.heap.page_allocator, window.hwnd.?, {width}, {height});
+    // Renderer
+    var renderer = try D3D11Renderer.init(allocator, window.hwnd.?, {width}, {height});
     defer renderer.deinit();
 
-    var text_renderer = try D3D11TextRenderer.init(std.heap.page_allocator, &renderer, font_data, 20);
+    // Text system (for layout measurement)
+    var ts = try text_system.TextSystem.init(allocator);
+    defer ts.deinit();
+    _ = try ts.loadFontMem(font_data);
+
+    // Glyph cache (for text rasterization)
+    var glyph_cache = try GlyphCache.init(allocator);
+    defer glyph_cache.deinit();
+    const font_id = try glyph_cache.loadFont(font_data);
+
+    // Text renderer (for D3D11 rendering)
+    var text_renderer = try D3D11TextRenderer.init(allocator, &renderer, &glyph_cache, font_id, 20);
     defer text_renderer.deinit();
 
+    // Scene context (combines renderer + text renderer)
+    var scene_ctx = D3D11SceneContext{{
+        .renderer = &renderer,
+        .text_renderer = &text_renderer,
+    }};
+
+    // Layout engine
+    var layout = zaffy.Zaffy.init(allocator);
+    defer layout.deinit();
+
+    // Scene for quad batching
+    var scene = Scene.init(allocator);
+    defer scene.deinit();
+
+    // State
     var state = {class_name}{{}};
 
     while (!window.shouldClose()) {{
@@ -418,8 +437,20 @@ pub fn main() !void {{
             }}
         }}
 
+        // Build UI
+        div_mod.reset();
+        var label_buf: [256]u8 = undefined;
+        const root = state.render(&label_buf);
+
+        // Layout
+        try root.buildWithTextSystem(&layout, 16, &ts);
+        layout.computeLayoutWithSize(root.node_id.?, {width}, {height});
+
+        // Render
         renderer.beginFrame();
-        state.render(&renderer, &text_renderer);
+        const bg = rgb(0x505050).toRgba();
+        renderer.clear(bg.r, bg.g, bg.b, bg.a);
+        scene_ctx.renderDiv(root, &layout, &scene);
         renderer.present(true);
     }}
 }}

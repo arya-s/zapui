@@ -4,6 +4,7 @@
 * Go phase by phase
 * Each phase has to successfully build and be approved by the maintainer
 * Use the `playground/` folder to try out and test the library during development
+* When porting a GPUI example, do NOT adjust the UI code in the example to work around issues - instead fix the underlying ZapUI library to match GPUI's behavior
 
 ## GPUI Example Porting Workflow
 

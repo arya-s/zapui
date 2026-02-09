@@ -51,19 +51,21 @@ pub const D3D11SceneContext = struct {
         const y = parent_y + lay.location.y;
 
         if (d.text_content_val) |text| {
-            const text_w = self.text_renderer.measureText(text);
-            // Center horizontally
-            const tx = x + (lay.size.width - text_w) / 2;
-            // Center vertically with baseline offset
-            const ty = y + lay.size.height / 2 + 6;
+            // Text starts at content area (after padding)
+            // Resolve padding to pixels (simple case - just handle px values)
+            const padding_left: Pixels = if (d.style.padding.left == .px) d.style.padding.left.px else 0;
+            const padding_top: Pixels = if (d.style.padding.top == .px) d.style.padding.top.px else 0;
+            const padding_bottom: Pixels = if (d.style.padding.bottom == .px) d.style.padding.bottom.px else 0;
+            const tx = x + padding_left;
+            // Center vertically with baseline offset, accounting for padding
+            const content_height = lay.size.height - padding_top - padding_bottom;
+            const ty = y + padding_top + content_height / 2 + 6;
             const tc = d.text_color_val.toRgba();
             self.text_renderer.draw(self.renderer, text, tx, ty, .{ tc.r, tc.g, tc.b, tc.a });
         }
 
-        for (d.children[0..d.child_count]) |maybe_child| {
-            if (maybe_child) |child| {
-                self.drawDivTextRecursive(child, layout, x, y);
-            }
+        for (d.children_list.items) |child| {
+            self.drawDivTextRecursive(child, layout, x, y);
         }
     }
 

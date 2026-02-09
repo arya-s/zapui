@@ -1,5 +1,5 @@
 #!/bin/bash
-# Capture screenshot of a ZapUI example on Windows using PrintWindow API
+# Capture screenshot of a ZapUI example on Windows using ShareX CLI
 #
 # Usage:
 #   ./capture_zapui.sh hello_world
@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ZAPUI_DIR="$(dirname "$SCRIPT_DIR")"
 EXAMPLE_DIR="$ZAPUI_DIR/examples/gpui_ports/$EXAMPLE"
 SCREENSHOTS_DIR="$EXAMPLE_DIR/screenshots"
+OUTPUT_FILE="$SCREENSHOTS_DIR/zapui.png"
 
 mkdir -p "$SCREENSHOTS_DIR"
 
@@ -27,58 +28,49 @@ echo "=== Capturing ZapUI: $EXAMPLE ==="
 # Copy exe to Windows temp
 cp "$EXE" /mnt/c/temp/
 
-echo "Launching and capturing..."
-powershell.exe -Command '
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class PrintWin {
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
+# Launch the app and wait for it to render
+echo "Launching ${EXAMPLE}.exe..."
+powershell.exe -Command "Start-Process 'C:\temp\\${EXAMPLE}.exe'"
+sleep 1
+
+# Activate the window before capturing
+echo "Activating window..."
+powershell.exe -Command "
+\$wshell = New-Object -ComObject wscript.shell
+\$proc = Get-Process -Name '${EXAMPLE}' -ErrorAction SilentlyContinue | Select-Object -First 1
+if (\$proc) {
+    Add-Type @'
+    using System;
+    using System.Runtime.InteropServices;
+    public class Win32 {
+        [DllImport(\"user32.dll\")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+'@
+    [Win32]::SetForegroundWindow(\$proc.MainWindowHandle)
 }
-"@
+"
+sleep 1
 
-Stop-Process -Name "'"$EXAMPLE"'" -Force -EA SilentlyContinue
-Start-Sleep -Milliseconds 500
+# Capture with ShareX (saves to its default Screenshots folder)
+echo "Capturing with ShareX..."
+powershell.exe -Command "& 'C:\Program Files\ShareX\ShareX.exe' -ActiveWindow -silent"
 
-Start-Process "C:\temp\'"$EXAMPLE"'.exe"
-Start-Sleep -Seconds 3
+# Wait for ShareX to finish
+sleep 2
 
-$p = Get-Process -Name "'"$EXAMPLE"'" -EA SilentlyContinue | Select -First 1
-if ($p -and $p.MainWindowHandle -ne 0) {
-    $handle = $p.MainWindowHandle
-    [PrintWin]::SetForegroundWindow($handle) | Out-Null
-    Start-Sleep -Milliseconds 500
-    
-    $rect = New-Object PrintWin+RECT
-    [PrintWin]::GetWindowRect($handle, [ref]$rect) | Out-Null
-    $w = $rect.R - $rect.L
-    $h = $rect.B - $rect.T
-    Write-Host "Window: ${w} x ${h}"
-    
-    $bmp = New-Object System.Drawing.Bitmap($w, $h)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $hdc = $g.GetHdc()
-    [PrintWin]::PrintWindow($handle, $hdc, 0) | Out-Null
-    $g.ReleaseHdc($hdc)
-    $bmp.Save("C:\temp\zapui_capture.png", [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose()
-    $bmp.Dispose()
-    Write-Host "Captured"
-}
+# Find the most recent screenshot from ShareX's default folder
+SHAREX_SCREENSHOT=$(powershell.exe -Command "(Get-ChildItem \"\$env:USERPROFILE\Documents\ShareX\Screenshots\" -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName" 2>/dev/null | tr -d '\r')
 
-Stop-Process -Name "'"$EXAMPLE"'" -Force -EA SilentlyContinue
-'
-
-if [ -f "/mnt/c/temp/zapui_capture.png" ]; then
-    cp "/mnt/c/temp/zapui_capture.png" "$SCREENSHOTS_DIR/zapui.png"
-    rm "/mnt/c/temp/zapui_capture.png"
-    echo "✅ Saved: $SCREENSHOTS_DIR/zapui.png"
+if [ -n "$SHAREX_SCREENSHOT" ]; then
+    # Convert Windows path to WSL path and copy
+    WSL_PATH=$(wslpath "$SHAREX_SCREENSHOT")
+    cp "$WSL_PATH" "$OUTPUT_FILE"
+    echo "✅ Saved: $OUTPUT_FILE"
 else
     echo "❌ Screenshot failed"
     exit 1
 fi
+
+# Kill the app
+powershell.exe -Command "Stop-Process -Name '${EXAMPLE}' -Force -EA SilentlyContinue" 2>/dev/null || true
